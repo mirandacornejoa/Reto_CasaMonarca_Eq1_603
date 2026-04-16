@@ -1,10 +1,13 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
-import AdminRoute from "./AdminRoute";
+import LevelRoute from "./LevelRoute";
 import LoginPage from "../pages/LoginPage";
 import ActivateAccountPage from "../pages/ActivateAccountPage";
-import AdminDashboardPage from "../pages/AdminDashboardPage";
+import DashboardPage from "../pages/DashboardPage";
 import UsersAdminPage from "../pages/UsersAdminPage";
+import RecordsPage from "../pages/RecordsPage";
+import AuditPage from "../pages/AuditPage";
+import TemplatesPage from "../pages/TemplatesPage";
 
 function AppRouter() {
   return (
@@ -16,7 +19,18 @@ function AppRouter() {
         path="/"
         element={
           <ProtectedRoute>
-            <AdminDashboardPage />
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/records"
+        element={
+          <ProtectedRoute>
+            <LevelRoute maxLevel={3}>
+              <RecordsPage />
+            </LevelRoute>
           </ProtectedRoute>
         }
       />
@@ -25,9 +39,31 @@ function AppRouter() {
         path="/admin/users"
         element={
           <ProtectedRoute>
-            <AdminRoute>
+            <LevelRoute maxLevel={1}>
               <UsersAdminPage />
-            </AdminRoute>
+            </LevelRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/audit"
+        element={
+          <ProtectedRoute>
+            <LevelRoute maxLevel={1}>
+              <AuditPage />
+            </LevelRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/templates"
+        element={
+          <ProtectedRoute>
+            <LevelRoute maxLevel={1}>
+              <TemplatesPage />
+            </LevelRoute>
           </ProtectedRoute>
         }
       />

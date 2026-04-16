@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -10,6 +10,8 @@ class UserCreateByAdminRequest(BaseModel):
     area_id: int
     access_level_code: int = Field(ge=1, le=4)
     role_id: Optional[int] = None
+    starts_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 
 class UserRead(BaseModel):
@@ -24,6 +26,12 @@ class UserRead(BaseModel):
     access_level_name: str
     role_id: int
     role_name: str
+    starts_at: Optional[datetime]
+    expires_at: Optional[datetime]
+    certificate_id: Optional[int] = None
+    certificate_status: Optional[str] = None
+    certificate_serial: Optional[str] = None
+    certificate_expires_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -44,6 +52,11 @@ class UserLevelUpdateRequest(BaseModel):
 
 class UserStatusUpdateRequest(BaseModel):
     is_active: bool
+
+
+class UserExpiryUpdateRequest(BaseModel):
+    starts_at: Optional[datetime] = None
+    expires_at: datetime
 
 
 class AreaRead(BaseModel):

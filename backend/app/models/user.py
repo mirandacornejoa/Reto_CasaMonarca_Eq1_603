@@ -10,7 +10,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String(150), nullable=False)
     email = Column(String(190), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=True)
+
     status = Column(String(20), nullable=False, default="PENDING")
     is_active = Column(Boolean, nullable=False, default=False)
 
@@ -20,6 +20,9 @@ class User(Base):
 
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    starts_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -28,4 +31,24 @@ class User(Base):
     role = relationship("Role", back_populates="users")
 
     activation_tokens = relationship("ActivationToken", back_populates="user")
+    otp_tokens = relationship("OtpToken", back_populates="user")
     credential = relationship("Credential", back_populates="user", uselist=False)
+    certificates = relationship(
+        "Certificate",
+        back_populates="user",
+        foreign_keys="Certificate.user_id",
+        order_by="Certificate.created_at.desc()",
+    )
+
+    @property
+    def active_certificate(self):
+        """Returns the most recent VALID certificate, or None."""
+        for cert in self.certificates:
+            if cert.status == "VALID":
+                return cert
+        return None
+
+    @property
+    def latest_certificate(self):
+        """Returns the most recent certificate regardless of status."""
+        return self.certificates[0] if self.certificates else None

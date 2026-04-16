@@ -6,17 +6,42 @@ export async function createCollaborator(payload) {
 }
 
 export async function listUsers() {
-  const { data } = await apiClient.get("/users/");
+  const { data } = await apiClient.get("/identity/users");
   return data;
 }
 
 export async function updateUserLevel(userId, payload) {
-  const { data } = await apiClient.patch(`/users/${userId}/level`, payload);
+  const { data } = await apiClient.patch(`/identity/users/${userId}/level`, payload);
   return data;
 }
 
 export async function updateUserStatus(userId, isActive) {
-  const { data } = await apiClient.patch(`/users/${userId}/status`, { is_active: isActive });
+  const { data } = await apiClient.patch(`/identity/users/${userId}/status`, { is_active: isActive });
+  return data;
+}
+
+export async function revokeUser(userId) {
+  const { data } = await apiClient.patch(`/identity/users/${userId}/revoke`);
+  return data;
+}
+
+export async function reactivateUser(userId) {
+  const { data } = await apiClient.patch(`/identity/users/${userId}/reactivate`);
+  return data;
+}
+
+export async function updateUserExpiry(userId, payload) {
+  const { data } = await apiClient.patch(`/identity/users/${userId}/expiry`, payload);
+  return data;
+}
+
+export async function getUserCertificate(userId) {
+  const { data } = await apiClient.get(`/identity/users/${userId}/certificate`);
+  return data;
+}
+
+export async function reissueCertificate(userId) {
+  const { data } = await apiClient.post(`/identity/users/${userId}/certificate/reissue`);
   return data;
 }
 
@@ -27,5 +52,10 @@ export async function listAreas() {
 
 export async function listLevels() {
   const { data } = await apiClient.get("/roles/levels");
+  return data;
+}
+
+export async function listRoles() {
+  const { data } = await apiClient.get("/roles/");
   return data;
 }

@@ -13,5 +13,7 @@ class AuditLog(Base):
     resource_id = Column(String(64), nullable=True)
     result = Column(String(20), nullable=False)
     detail = Column(Text, nullable=True)
+    hash_related = Column(String(64), nullable=True)
+    certificate_id = Column(Integer, ForeignKey("certificates.id"), nullable=True)
     ip_address = Column(String(64), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())

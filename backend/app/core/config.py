@@ -73,6 +73,9 @@ class Settings:
             "ACTIVATION_URL_BASE", "http://localhost:5173/activate"
         )
 
+        self.OTP_EXPIRE_MINUTES: int = _get_int("OTP_EXPIRE_MINUTES", 10)
+        self.PRE2FA_TOKEN_EXPIRE_MINUTES: int = _get_int("PRE2FA_TOKEN_EXPIRE_MINUTES", 10)
+
         self.ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@demo.org")
         self.ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "Admin123!")
         self.ADMIN_FULL_NAME: str = os.getenv("ADMIN_FULL_NAME", "Administrador del Sistema")
@@ -80,6 +83,11 @@ class Settings:
         self.CORS_ORIGINS: List[str] = _get_csv(
             "CORS_ORIGINS", ["http://localhost:5173", "http://127.0.0.1:5173"]
         )
+
+    @property
+    def smtp_configured(self) -> bool:
+        """True only if all required SMTP settings are present."""
+        return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASSWORD)
 
     @property
     def resolved_database_url(self) -> str:

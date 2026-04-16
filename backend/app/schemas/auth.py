@@ -8,6 +8,17 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class TwoFactorChallengeResponse(BaseModel):
+    requires_2fa: bool = True
+    session_token: str
+    demo_otp: Optional[str] = None
+
+
+class Verify2FARequest(BaseModel):
+    session_token: str
+    otp_code: str = Field(min_length=6, max_length=6)
+
+
 class PermissionRead(BaseModel):
     code: str
     name: str

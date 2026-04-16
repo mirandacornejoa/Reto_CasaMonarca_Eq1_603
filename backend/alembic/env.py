@@ -13,8 +13,11 @@ from app.models import (  # noqa: F401 — importados para que Alembic detecte l
     Certificate,
     Credential,
     Document,
+    MigrantRecord,
+    OtpToken,
     Permission,
     Role,
+    Template,
     User,
     role_permissions,
 )

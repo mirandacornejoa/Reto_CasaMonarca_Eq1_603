@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import AppNav from "../components/AppNav";
+import { getStatusBadgeClass } from "../constants";
 import {
-  createCollaborator,
-  listAreas,
-  listLevels,
-  listUsers,
-  updateUserLevel,
-  updateUserStatus,
+  createCollaborator, listAreas, listLevels, listUsers,
+  updateUserStatus, revokeUser, reactivateUser, updateUserExpiry,
+  reissueCertificate,
 } from "../api/usersApi";
 
 function UsersAdminPage() {
@@ -16,44 +14,36 @@ function UsersAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [expiryModal, setExpiryModal] = useState(null);
+  const [expiryDate, setExpiryDate] = useState("");
 
   const [form, setForm] = useState({
-    full_name: "",
-    email: "",
-    area_id: "",
-    access_level_code: 4,
+    full_name: "", email: "", area_id: "", access_level_code: 3, expires_at: "",
   });
 
   const loadData = async () => {
     setLoading(true);
-    setError("");
     try {
-      const [usersData, areasData, levelsData] = await Promise.all([
-        listUsers(),
-        listAreas(),
-        listLevels(),
-      ]);
-      setUsers(usersData);
-      setAreas(areasData);
-      setLevels(levelsData);
-      if (!form.area_id && areasData.length > 0) {
-        setForm((current) => ({ ...current, area_id: String(areasData[0].id) }));
-      }
+      const [u, a, l] = await Promise.all([listUsers(), listAreas(), listLevels()]);
+      setUsers(u);
+      setAreas(a);
+      setLevels(l);
+      if (!form.area_id && a.length) setForm((c) => ({ ...c, area_id: String(a[0].id) }));
     } catch (err) {
-      setError(err?.response?.data?.detail || "No fue posible cargar usuarios");
+      setError(err?.response?.data?.detail || "Error cargando datos");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
+  const clearMessages = () => { setError(""); setSuccess(""); };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    clearMessages();
     try {
       const payload = {
         full_name: form.full_name,
@@ -61,171 +51,177 @@ function UsersAdminPage() {
         area_id: Number(form.area_id),
         access_level_code: Number(form.access_level_code),
       };
+      if (form.expires_at) payload.expires_at = new Date(form.expires_at).toISOString();
       const result = await createCollaborator(payload);
-      const linkMessage = result.activation_link
+      const linkMsg = result.activation_link
         ? ` Enlace de activación (demo): ${result.activation_link}`
         : " Enlace enviado por SMTP.";
-      setSuccess(`Colaborador creado correctamente.${linkMessage}`);
-      setForm((current) => ({ ...current, full_name: "", email: "" }));
+      setSuccess(`Colaborador creado.${linkMsg}`);
+      setForm((c) => ({ ...c, full_name: "", email: "", expires_at: "" }));
+      setShowCreate(false);
       await loadData();
     } catch (err) {
-      setError(err?.response?.data?.detail || "No se pudo crear el colaborador");
+      setError(err?.response?.data?.detail || "Error al crear colaborador");
     }
   };
 
-  const handleChangeLevel = async (userId, levelCode, areaId) => {
-    setError("");
-    setSuccess("");
+  const handleAction = async (action, userId, label) => {
+    clearMessages();
+    if (action !== "reactivate" && !window.confirm(`¿${label} este usuario?`)) return;
     try {
-      await updateUserLevel(userId, {
-        access_level_code: Number(levelCode),
-        area_id: Number(areaId),
-      });
-      setSuccess("Nivel de acceso actualizado.");
+      if (action === "deactivate") await updateUserStatus(userId, false);
+      else if (action === "reactivate") await reactivateUser(userId);
+      else if (action === "revoke") await revokeUser(userId);
+      else if (action === "reissue") await reissueCertificate(userId);
+      setSuccess(`Acción "${label}" completada.`);
       await loadData();
     } catch (err) {
-      setError(err?.response?.data?.detail || "No se pudo actualizar el nivel");
+      setError(err?.response?.data?.detail || `Error: ${label}`);
     }
   };
 
-  const handleToggleStatus = async (userId, nextStatus) => {
-    if (!nextStatus) {
-      const confirmed = window.confirm("¿Desactivar este usuario? Perderá acceso al sistema.");
-      if (!confirmed) return;
-    }
-    setError("");
-    setSuccess("");
+  const handleExpiry = async () => {
+    clearMessages();
+    if (!expiryDate || !expiryModal) return;
     try {
-      await updateUserStatus(userId, nextStatus);
-      setSuccess("Estado actualizado.");
+      await updateUserExpiry(expiryModal, { expires_at: new Date(expiryDate).toISOString() });
+      setSuccess("Vigencia actualizada.");
+      setExpiryModal(null);
+      setExpiryDate("");
       await loadData();
     } catch (err) {
-      setError(err?.response?.data?.detail || "No se pudo actualizar el estado");
+      setError(err?.response?.data?.detail || "Error al actualizar vigencia");
     }
   };
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" }) : "–";
 
   return (
     <main className="container">
       <AppNav />
 
-      <section className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Alta de colaborador</h2>
-        <form className="grid" onSubmit={handleCreate}>
-          <input
-            className="input"
-            type="text"
-            placeholder="Nombre completo"
-            value={form.full_name}
-            onChange={(event) => setForm({ ...form, full_name: event.target.value })}
-            required
-          />
-          <input
-            className="input"
-            type="email"
-            placeholder="Correo"
-            value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
-            required
-          />
-          <select
-            className="select"
-            value={form.area_id}
-            onChange={(event) => setForm({ ...form, area_id: event.target.value })}
-            required
-          >
-            {areas.map((area) => (
-              <option key={area.id} value={area.id}>
-                {area.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="select"
-            value={form.access_level_code}
-            onChange={(event) => setForm({ ...form, access_level_code: event.target.value })}
-            required
-          >
-            {levels.map((level) => (
-              <option key={level.code} value={level.code}>
-                {level.name}
-              </option>
-            ))}
-          </select>
-          <button className="button" type="submit">
-            Crear colaborador
-          </button>
-        </form>
-        {success ? <p className="success">{success}</p> : null}
-        {error ? <p className="error">{error}</p> : null}
-      </section>
-
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Usuarios</h2>
-        {loading ? <p>Cargando...</p> : null}
-
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Email</th>
-                <th>Área</th>
-                <th>Nivel</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.full_name}</td>
-                  <td>{user.email}</td>
-                  <td>{user.area_name || "Sin área"}</td>
-                  <td>
-                    <select
-                      className="select"
-                      value={user.access_level_code}
-                      onChange={(event) =>
-                        handleChangeLevel(user.id, event.target.value, user.area_id ?? Number(form.area_id))
-                      }
-                    >
-                      {levels.map((level) => (
-                        <option key={level.code} value={level.code}>
-                          {level.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <span className={`status ${user.is_active ? "active" : "inactive"}`}>
-                      {user.status}
-                    </span>
-                  </td>
-                  <td>
-                    {user.is_active ? (
-                      <button
-                        className="button warning"
-                        type="button"
-                        onClick={() => handleToggleStatus(user.id, false)}
-                      >
-                        Desactivar
-                      </button>
-                    ) : (
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => handleToggleStatus(user.id, true)}
-                      >
-                        Reactivar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="header">
+        <div>
+          <h1 className="page-title">Gestión de usuarios</h1>
+          <p className="page-subtitle">Administra colaboradores, roles, vigencia y certificados internos.</p>
         </div>
-      </section>
+        <button className="button button-primary" onClick={() => setShowCreate(!showCreate)}>
+          {showCreate ? "Cancelar" : "+ Nuevo colaborador"}
+        </button>
+      </div>
+
+      {success && <div className="alert alert-success">{success}</div>}
+      {error && <div className="alert alert-error">{error}</div>}
+
+      {showCreate && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 className="section-title">Alta de colaborador</h3>
+          <form onSubmit={handleCreate}>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Nombre completo</label>
+                <input className="input" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
+              </div>
+              <div className="form-group">
+                <label>Correo electrónico</label>
+                <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Área</label>
+                <select className="select" value={form.area_id} onChange={(e) => setForm({ ...form, area_id: e.target.value })} required>
+                  {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Nivel de acceso</label>
+                <select className="select" value={form.access_level_code} onChange={(e) => setForm({ ...form, access_level_code: e.target.value })} required>
+                  {levels.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Vigencia hasta (opcional)</label>
+                <input className="input" type="date" value={form.expires_at} onChange={(e) => setForm({ ...form, expires_at: e.target.value })} />
+              </div>
+            </div>
+            <button className="button button-primary" type="submit">Crear colaborador</button>
+          </form>
+        </div>
+      )}
+
+      {/* Expiry Modal */}
+      {expiryModal && (
+        <div className="modal-overlay" onClick={() => setExpiryModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="section-title">Renovar vigencia</h3>
+            <div className="form-group">
+              <label>Nueva fecha de expiración</label>
+              <input className="input" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
+            </div>
+            <div className="toolbar">
+              <button className="button button-primary" onClick={handleExpiry} disabled={!expiryDate}>Guardar</button>
+              <button className="button button-secondary" onClick={() => setExpiryModal(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h3 className="section-title">Usuarios registrados</h3>
+        {loading ? <p className="loading">Cargando...</p> : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Email</th>
+                  <th>Área</th>
+                  <th>Nivel</th>
+                  <th>Estado</th>
+                  <th>Vigencia</th>
+                  <th>Certificado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.full_name}</td>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</td>
+                    <td>{u.area_name || "–"}</td>
+                    <td style={{ fontSize: 12 }}>{u.access_level_name}</td>
+                    <td><span className={`badge ${getStatusBadgeClass(u.status)}`}>{u.status}</span></td>
+                    <td style={{ fontSize: 12 }}>{fmtDate(u.expires_at)}</td>
+                    <td>
+                      {u.certificate_status ? (
+                        <span className={`badge ${getStatusBadgeClass(u.certificate_status)}`}>{u.certificate_status}</span>
+                      ) : "–"}
+                    </td>
+                    <td>
+                      <div className="toolbar">
+                        {u.status === "ACTIVE" && (
+                          <button className="button button-warning button-sm" onClick={() => handleAction("deactivate", u.id, "Desactivar")}>Desactivar</button>
+                        )}
+                        {(u.status === "INACTIVE" || u.status === "REVOKED") && (
+                          <button className="button button-success button-sm" onClick={() => handleAction("reactivate", u.id, "Reactivar")}>Reactivar</button>
+                        )}
+                        {u.status === "ACTIVE" && (
+                          <button className="button button-danger button-sm" onClick={() => handleAction("revoke", u.id, "Revocar")}>Revocar</button>
+                        )}
+                        <button className="button button-ghost button-sm" onClick={() => { setExpiryModal(u.id); setExpiryDate(""); }}>Vigencia</button>
+                        {u.certificate_id && (
+                          <button className="button button-ghost button-sm" onClick={() => handleAction("reissue", u.id, "Re-emitir certificado")}>Re-emitir cert</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </main>
   );
 }
