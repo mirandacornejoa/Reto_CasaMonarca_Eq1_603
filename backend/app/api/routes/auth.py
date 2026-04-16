@@ -1,12 +1,23 @@
+"""Auth routes — login con 2FA, /me, demo endpoints."""
+
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_admin
-from app.schemas.auth import ActivateAccountRequest, DemoActivationResponse, MeResponse, TokenResponse
+from app.core.security import decode_token
+from app.repositories.user_repository import UserRepository
+from app.schemas.auth import (
+    DemoActivationResponse,
+    MeResponse,
+    TokenResponse,
+    TwoFactorChallengeResponse,
+    Verify2FARequest,
+)
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.notification_service import NotificationService
@@ -14,7 +25,10 @@ from app.services.notification_service import NotificationService
 router = APIRouter()
 
 
-@router.post("/login", response_model=TokenResponse)
+# ------------------------------------------------------------------ #
+#  Login (paso 1 → 2FA challenge)                                      #
+# ------------------------------------------------------------------ #
+@router.post("/login")
 def login(
     request: Request,
     db: Session = Depends(get_db),
@@ -34,7 +48,82 @@ def login(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=error)
 
+    # Credenciales OK → enviar OTP para 2FA
+    sent_by_smtp, demo_otp = AuthService.send_otp(db, user)
+    session_token = AuthService.build_pre2fa_token(user)
+
+    AuditService.log(
+        db=db,
+        actor_user_id=user.id,
+        action="auth.2fa_requested",
+        resource="user",
+        resource_id=str(user.id),
+        result="SUCCESS",
+        detail="OTP enviado" if sent_by_smtp else "OTP generado (modo demo)",
+        request=request,
+    )
+
+    response = TwoFactorChallengeResponse(
+        requires_2fa=True,
+        session_token=session_token,
+        demo_otp=demo_otp,
+    )
+    return response
+
+
+# ------------------------------------------------------------------ #
+#  Verificar OTP (paso 2 → JWT final)                                  #
+# ------------------------------------------------------------------ #
+@router.post("/verify-2fa", response_model=TokenResponse)
+def verify_2fa(
+    payload: Verify2FARequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    # Validar session_token (pre_2fa)
+    try:
+        token_payload = decode_token(payload.session_token)
+        user_id = int(token_payload.get("sub"))
+        stage = token_payload.get("stage")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de sesión inválido")
+
+    if stage != "pre_2fa":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token no es de pre-autenticación",
+        )
+
+    # Verificar OTP
+    user = AuthService.verify_otp(db, user_id, payload.otp_code)
+    if not user:
+        AuditService.log(
+            db=db,
+            actor_user_id=user_id,
+            action="auth.2fa_failure",
+            resource="user",
+            resource_id=str(user_id),
+            result="FAILURE",
+            detail="Código OTP inválido o expirado",
+            request=request,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Código de verificación inválido o expirado",
+        )
+
+    # OTP válido → emitir JWT final
     token = AuthService.build_token(user)
+
+    AuditService.log(
+        db=db,
+        actor_user_id=user.id,
+        action="auth.2fa_success",
+        resource="user",
+        resource_id=str(user.id),
+        result="SUCCESS",
+        request=request,
+    )
     AuditService.log(
         db=db,
         actor_user_id=user.id,
@@ -42,11 +131,16 @@ def login(
         resource="user",
         resource_id=str(user.id),
         result="SUCCESS",
+        detail="Login completado con 2FA",
         request=request,
     )
+
     return TokenResponse(access_token=token)
 
 
+# ------------------------------------------------------------------ #
+#  /me                                                                 #
+# ------------------------------------------------------------------ #
 @router.get("/me", response_model=MeResponse)
 def me(current_user=Depends(require_active_user)):
     return MeResponse(
@@ -65,36 +159,9 @@ def me(current_user=Depends(require_active_user)):
     )
 
 
-@router.post("/activate", status_code=status.HTTP_200_OK)
-def activate_account(
-    payload: ActivateAccountRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    user = AuthService.activate_account(db, payload.token, payload.password)
-    if not user:
-        AuditService.log(
-            db=db,
-            action="identity.activate_account",
-            resource="activation_token",
-            result="FAILURE",
-            detail="Token inválido o vencido",
-            request=request,
-        )
-        raise HTTPException(status_code=400, detail="Token inválido o vencido")
-
-    AuditService.log(
-        db=db,
-        actor_user_id=user.id,
-        action="identity.activate_account",
-        resource="user",
-        resource_id=str(user.id),
-        result="SUCCESS",
-        request=request,
-    )
-    return {"message": "Cuenta activada correctamente"}
-
-
+# ------------------------------------------------------------------ #
+#  Demo endpoints                                                      #
+# ------------------------------------------------------------------ #
 @router.get("/demo/activation-links", response_model=List[DemoActivationResponse])
 def get_demo_activation_links(_: object = Depends(require_admin)):
     return NotificationService.get_demo_activation_links()

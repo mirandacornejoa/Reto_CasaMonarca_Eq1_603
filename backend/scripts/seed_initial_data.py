@@ -1,6 +1,7 @@
-"""Seed inicial de niveles, permisos, roles, áreas y admin."""
+"""Seed inicial de niveles, permisos, roles, áreas, usuarios demo con certificados, registros y plantilla de ejemplo."""
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -9,10 +10,14 @@ from app.core.database import SessionLocal
 from app.core.security import get_password_hash
 from app.models.access_level import AccessLevel
 from app.models.area import Area
+from app.models.audit_log import AuditLog
 from app.models.credential import Credential
+from app.models.migrant_record import MigrantRecord
 from app.models.permission import Permission
 from app.models.role import Role
+from app.models.template import Template
 from app.models.user import User
+from app.services.crypto_service import CryptoService
 
 
 BASE_PERMISSIONS = [
@@ -41,6 +46,36 @@ BASE_PERMISSIONS = [
         "name": "Gestionar usuarios",
         "description": "Alta, cambio de niveles y activación/desactivación",
     },
+    {
+        "code": "records.create",
+        "name": "Crear registros",
+        "description": "Permite crear registros de migrantes",
+    },
+    {
+        "code": "records.read",
+        "name": "Leer registros",
+        "description": "Permite consultar registros de migrantes",
+    },
+    {
+        "code": "records.edit",
+        "name": "Editar registros",
+        "description": "Permite editar registros de migrantes",
+    },
+    {
+        "code": "certificates.read",
+        "name": "Consultar certificados",
+        "description": "Permite consultar certificados emitidos",
+    },
+    {
+        "code": "audit.read",
+        "name": "Consultar bitácora",
+        "description": "Permite consultar la bitácora de auditoría",
+    },
+    {
+        "code": "templates.manage",
+        "name": "Gestionar plantillas",
+        "description": "Permite crear, editar y desactivar plantillas",
+    },
 ]
 
 BASE_LEVELS = [
@@ -53,6 +88,119 @@ BASE_LEVELS = [
 BASE_AREAS = [
     {"name": "Administración", "description": "Área administrativa"},
     {"name": "Operaciones", "description": "Área operativa"},
+    {"name": "Atención al migrante", "description": "Área de atención directa al migrante"},
+]
+
+# Usuarios demo con sus credenciales
+DEMO_USERS = [
+    {
+        "full_name": settings.ADMIN_FULL_NAME,
+        "email": settings.ADMIN_EMAIL.lower(),
+        "password": settings.ADMIN_PASSWORD,
+        "level_code": 1,
+        "role_name": "SYSTEM_ADMIN",
+        "area_name": "Administración",
+    },
+    {
+        "full_name": "María García López",
+        "email": "coordinador@demo.org",
+        "password": "Coord123!",
+        "level_code": 2,
+        "role_name": "AREA_COORDINATOR",
+        "area_name": "Atención al migrante",
+    },
+    {
+        "full_name": "Carlos Hernández Ruiz",
+        "email": "operador@demo.org",
+        "password": "Oper123!",
+        "level_code": 3,
+        "role_name": "AREA_OPERATOR",
+        "area_name": "Operaciones",
+    },
+    {
+        "full_name": "Ana Martínez Soto",
+        "email": "externo@demo.org",
+        "password": "Ext123!",
+        "level_code": 4,
+        "role_name": "EXTERNAL_STAFF",
+        "area_name": "Operaciones",
+    },
+]
+
+# Registros de migrantes de ejemplo
+DEMO_RECORDS = [
+    {
+        "name_or_alias": "Juan Pérez",
+        "nationality": "Honduras",
+        "language": "Español",
+        "age_range": "25-34",
+        "gender": "Masculino",
+        "needs": ["alimentación", "alojamiento", "atención médica"],
+        "observations": "Llegó acompañado de un menor. Requiere atención médica básica.",
+        "status": "REGISTRADO",
+        "area_name": "Atención al migrante",
+    },
+    {
+        "name_or_alias": "María del Carmen",
+        "nationality": "Guatemala",
+        "language": "Español, Q'eqchi'",
+        "age_range": "35-44",
+        "gender": "Femenino",
+        "needs": ["apoyo legal", "documentación"],
+        "observations": "Solicitante de asilo. Documentación en proceso.",
+        "status": "EN_PROCESO",
+        "area_name": "Atención al migrante",
+    },
+    {
+        "name_or_alias": "Roberto L.",
+        "nationality": "El Salvador",
+        "language": "Español",
+        "age_range": "18-24",
+        "gender": "Masculino",
+        "needs": ["alimentación", "transporte"],
+        "observations": "Tránsito hacia el norte. Apoyo con alimentación y hospedaje temporal.",
+        "status": "ATENDIDO",
+        "area_name": "Operaciones",
+    },
+    {
+        "name_or_alias": "Familia Gómez",
+        "nationality": "Venezuela",
+        "language": "Español",
+        "age_range": "(grupo familiar)",
+        "gender": "N/A",
+        "needs": ["alojamiento", "alimentación", "comunicación"],
+        "observations": "Grupo familiar de 4 personas. Niños en edad escolar.",
+        "status": "REGISTRADO",
+        "area_name": "Atención al migrante",
+    },
+    {
+        "name_or_alias": "Pedro S.",
+        "nationality": "Nicaragua",
+        "language": "Español",
+        "age_range": "45-54",
+        "gender": "Masculino",
+        "needs": ["apoyo psicológico"],
+        "observations": "Caso cerrado. Reubicación completada.",
+        "status": "CERRADO",
+        "area_name": "Operaciones",
+    },
+]
+
+# Plantilla base
+BASE_TEMPLATE_FIELDS = [
+    {"name": "name_or_alias", "label": "Nombre o alias", "field_type": "text", "required": True},
+    {"name": "nationality", "label": "Nacionalidad / País de origen", "field_type": "text", "required": False},
+    {"name": "language", "label": "Idioma principal", "field_type": "text", "required": False},
+    {"name": "age_range", "label": "Rango de edad", "field_type": "select", "required": False,
+     "options": ["Menor de 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+", "(grupo familiar)"]},
+    {"name": "gender", "label": "Género / Autodescripción", "field_type": "text", "required": False},
+    {"name": "contact_info", "label": "Medio de contacto", "field_type": "text", "required": False},
+    {"name": "needs", "label": "Necesidades principales", "field_type": "multiselect", "required": False,
+     "options": ["alimentación", "alojamiento", "atención médica", "apoyo psicológico",
+                 "apoyo legal", "documentación", "transporte", "comunicación"]},
+    {"name": "observations", "label": "Observaciones iniciales", "field_type": "textarea", "required": False},
+    {"name": "status", "label": "Estatus del caso", "field_type": "select", "required": True,
+     "options": ["REGISTRADO", "EN_PROCESO", "ATENDIDO", "CERRADO"]},
 ]
 
 
@@ -91,7 +239,7 @@ def get_or_create_role(
     name: str,
     description: str,
     level: AccessLevel,
-    permission_codes: list[str],
+    permission_codes: list,
     area_scoped: bool,
 ) -> Role:
     role = db.query(Role).filter(Role.name == name).first()
@@ -120,15 +268,194 @@ def get_or_create_role(
     return role
 
 
+def create_demo_user(
+    db: Session,
+    user_data: dict,
+    roles_by_name: dict,
+    areas_by_name: dict,
+    levels_by_code: dict,
+) -> User:
+    """Crea un usuario demo ACTIVE con contraseña, credencial y certificado."""
+    existing = db.query(User).filter(User.email == user_data["email"]).first()
+    if existing:
+        print(f"  Usuario {user_data['email']} ya existe, omitido.")
+        return existing
+
+    role = roles_by_name[user_data["role_name"]]
+    area = areas_by_name[user_data["area_name"]]
+    level = levels_by_code[user_data["level_code"]]
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=365)
+
+    user = User(
+        full_name=user_data["full_name"],
+        email=user_data["email"],
+        status="ACTIVE",
+        is_active=True,
+        area_id=area.id,
+        access_level_id=level.id,
+        role_id=role.id,
+        created_by_id=None,
+        starts_at=now,
+        expires_at=expires_at,
+    )
+    db.add(user)
+    db.flush()
+
+    # Credencial (password_hash vive aquí, no en User)
+    credential = Credential(
+        user_id=user.id,
+        identity_provider="local",
+        username=user.email,
+        password_hash=get_password_hash(user_data["password"]),
+        password_updated_at=now,
+    )
+    db.add(credential)
+    db.flush()
+
+    # Certificado criptográfico
+    cert = CryptoService.issue_certificate(db, user, expires_at, issued_by=user.id)
+
+    # Audit entry: creación
+    db.add(AuditLog(
+        actor_user_id=user.id,
+        action="identity.create_user",
+        resource="user",
+        resource_id=str(user.id),
+        result="SUCCESS",
+        detail=f"[SEED] Usuario demo creado con nivel {user_data['level_code']}",
+    ))
+
+    # Audit entry: emisión de certificado
+    db.add(AuditLog(
+        actor_user_id=user.id,
+        action="certificates.issue",
+        resource="certificate",
+        resource_id=str(cert.id),
+        result="SUCCESS",
+        detail=f"[SEED] Certificado emitido para {user.email}",
+        hash_related=cert.fingerprint,
+        certificate_id=cert.id,
+    ))
+
+    db.flush()
+    print(f"  [OK] Usuario: {user.email} | Nivel: {user_data['level_code']} | Cert: {cert.serial_number[:12]}...")
+    return user
+
+
+def create_demo_records(db: Session, admin_user: User, areas_by_name: dict) -> None:
+    """Crea registros de migrantes de ejemplo con hashes SHA-256."""
+    existing = db.query(MigrantRecord).count()
+    if existing > 0:
+        print(f"  Ya existen {existing} registros, omitidos.")
+        return
+
+    now = datetime.now(timezone.utc)
+    year = now.year
+
+    for i, rec_data in enumerate(DEMO_RECORDS):
+        area = areas_by_name.get(rec_data["area_name"])
+        area_id = area.id if area else None
+        folio = f"CM-{year}-{(i + 1):04d}"
+
+        needs_json = json.dumps(rec_data.get("needs", []), ensure_ascii=False)
+
+        record = MigrantRecord(
+            folio=folio,
+            name_or_alias=rec_data["name_or_alias"],
+            nationality=rec_data["nationality"],
+            language=rec_data.get("language"),
+            age_range=rec_data.get("age_range"),
+            gender=rec_data.get("gender"),
+            needs=needs_json,
+            registration_date=now - timedelta(days=len(DEMO_RECORDS) - i),
+            observations=rec_data["observations"],
+            area_id=area_id,
+            status=rec_data["status"],
+            created_by_id=admin_user.id,
+            updated_by_id=admin_user.id,
+        )
+        db.add(record)
+        db.flush()
+
+        # Calcular hash
+        hashable = {
+            "id": record.id,
+            "folio": record.folio,
+            "name_or_alias": record.name_or_alias,
+            "nationality": record.nationality,
+            "language": record.language,
+            "age_range": record.age_range,
+            "gender": record.gender,
+            "contact_info": record.contact_info,
+            "needs": record.needs,
+            "registration_date": str(record.registration_date),
+            "observations": record.observations,
+            "area_id": record.area_id,
+            "status": record.status,
+        }
+        record.sha256_hash = CryptoService.compute_record_hash(hashable)
+        db.add(record)
+        db.flush()
+
+        # Audit
+        db.add(AuditLog(
+            actor_user_id=admin_user.id,
+            action="records.create",
+            resource="migrant_record",
+            resource_id=str(record.id),
+            result="SUCCESS",
+            detail=f"[SEED] Registro demo: {record.folio} - {record.name_or_alias}",
+            hash_related=record.sha256_hash,
+        ))
+
+        print(f"  [OK] Registro: {record.folio} - {record.name_or_alias} | Hash: {record.sha256_hash[:16]}...")
+
+    db.flush()
+
+
+def create_base_template(db: Session, admin_user: User) -> None:
+    """Crea la plantilla base de registro de migrantes."""
+    existing = db.query(Template).filter(Template.name == "Registro básico de migrante").first()
+    if existing:
+        print("  Plantilla base ya existe, omitida.")
+        return
+
+    template = Template(
+        name="Registro básico de migrante",
+        description="Plantilla inicial de captura con campos genéricos y prudentes para registro de persona migrante.",
+        fields_json=json.dumps(BASE_TEMPLATE_FIELDS, ensure_ascii=False),
+        is_active=True,
+        created_by_id=admin_user.id,
+    )
+    db.add(template)
+    db.flush()
+
+    db.add(AuditLog(
+        actor_user_id=admin_user.id,
+        action="templates.create",
+        resource="template",
+        resource_id=str(template.id),
+        result="SUCCESS",
+        detail=f"[SEED] Plantilla base creada: {template.name}",
+    ))
+
+    print(f"  [OK] Plantilla: {template.name}")
+
+
 def seed() -> None:
     db = SessionLocal()
     try:
+        print("=== Seed: Niveles de acceso ===")
         for level_data in BASE_LEVELS:
             get_or_create_level(db, level_data)
 
+        print("=== Seed: Áreas ===")
         for area_data in BASE_AREAS:
             get_or_create_area(db, area_data)
 
+        print("=== Seed: Permisos ===")
         for permission_data in BASE_PERMISSIONS:
             get_or_create_permission(db, permission_data)
 
@@ -139,6 +466,7 @@ def seed() -> None:
         level_3 = db.query(AccessLevel).filter(AccessLevel.code == 3).first()
         level_4 = db.query(AccessLevel).filter(AccessLevel.code == 4).first()
 
+        print("=== Seed: Roles ===")
         get_or_create_role(
             db,
             name="SYSTEM_ADMIN",
@@ -150,6 +478,12 @@ def seed() -> None:
                 "scope.authorize",
                 "scope.template_manage",
                 "identity.manage_users",
+                "records.create",
+                "records.read",
+                "records.edit",
+                "certificates.read",
+                "audit.read",
+                "templates.manage",
             ],
             area_scoped=False,
         )
@@ -158,7 +492,14 @@ def seed() -> None:
             name="AREA_COORDINATOR",
             description="Coordinador de área",
             level=level_2,
-            permission_codes=["scope.consult", "scope.edit", "scope.authorize"],
+            permission_codes=[
+                "scope.consult",
+                "scope.edit",
+                "scope.authorize",
+                "records.create",
+                "records.read",
+                "records.edit",
+            ],
             area_scoped=True,
         )
         get_or_create_role(
@@ -166,7 +507,13 @@ def seed() -> None:
             name="AREA_OPERATOR",
             description="Personal operativo",
             level=level_3,
-            permission_codes=["scope.consult", "scope.edit"],
+            permission_codes=[
+                "scope.consult",
+                "scope.edit",
+                "records.create",
+                "records.read",
+                "records.edit",
+            ],
             area_scoped=True,
         )
         get_or_create_role(
@@ -174,39 +521,39 @@ def seed() -> None:
             name="EXTERNAL_STAFF",
             description="Personal externo",
             level=level_4,
-            permission_codes=["scope.consult"],
+            permission_codes=[
+                "scope.consult",
+            ],
             area_scoped=False,
         )
 
-        admin_role = db.query(Role).filter(Role.name == "SYSTEM_ADMIN").first()
-        admin_area = db.query(Area).filter(Area.name == "Administración").first()
+        db.flush()
 
-        admin = db.query(User).filter(User.email == settings.ADMIN_EMAIL.lower()).first()
-        if not admin:
-            admin = User(
-                full_name=settings.ADMIN_FULL_NAME,
-                email=settings.ADMIN_EMAIL.lower(),
-                password_hash=get_password_hash(settings.ADMIN_PASSWORD),
-                status="ACTIVE",
-                is_active=True,
-                area_id=admin_area.id,
-                access_level_id=level_1.id,
-                role_id=admin_role.id,
-                created_by_id=None,
-            )
-            db.add(admin)
-            db.flush()
+        # Preparar lookup tables
+        roles_by_name = {r.name: r for r in db.query(Role).all()}
+        areas_by_name = {a.name: a for a in db.query(Area).all()}
+        levels_by_code = {lv.code: lv for lv in db.query(AccessLevel).all()}
 
-            credential = Credential(
-                user_id=admin.id,
-                identity_provider="local",
-                username=admin.email,
-                password_updated_at=datetime.now(timezone.utc),
-            )
-            db.add(credential)
+        print("=== Seed: Usuarios demo ===")
+        users = []
+        for user_data in DEMO_USERS:
+            u = create_demo_user(db, user_data, roles_by_name, areas_by_name, levels_by_code)
+            users.append(u)
+
+        admin_user = users[0]
+
+        print("=== Seed: Registros de migrantes demo ===")
+        create_demo_records(db, admin_user, areas_by_name)
+
+        print("=== Seed: Plantilla base ===")
+        create_base_template(db, admin_user)
 
         db.commit()
-        print("Seed completado correctamente.")
+        print("\n[OK] Seed completado correctamente.")
+        print("\n--- Credenciales de usuarios demo ---")
+        for ud in DEMO_USERS:
+            print(f"  {ud['email']} / {ud['password']} (Nivel {ud['level_code']})")
+
     finally:
         db.close()
 

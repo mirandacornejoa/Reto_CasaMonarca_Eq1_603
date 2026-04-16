@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { activateAccount } from "../api/authApi";
 
 function ActivateAccountPage() {
@@ -16,6 +16,10 @@ function ActivateAccountPage() {
       setStatus({ success: "", error: "Las contraseñas no coinciden" });
       return;
     }
+    if (password.length < 8) {
+      setStatus({ success: "", error: "La contraseña debe tener al menos 8 caracteres" });
+      return;
+    }
     setLoading(true);
     setStatus({ success: "", error: "" });
 
@@ -27,7 +31,7 @@ function ActivateAccountPage() {
     } catch (error) {
       setStatus({
         success: "",
-        error: error?.response?.data?.detail || "No fue posible activar la cuenta",
+        error: error?.response?.data?.detail || "No fue posible activar la cuenta. El token puede ser inválido o haber expirado.",
       });
     } finally {
       setLoading(false);
@@ -36,49 +40,63 @@ function ActivateAccountPage() {
 
   if (!token) {
     return (
-      <main className="container" style={{ maxWidth: 440 }}>
-        <div className="card">
-          <h1>Activación</h1>
-          <p className="error">No se encontró token de activación en la URL.</p>
+      <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+        <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+          <h1 className="page-title">Activación de cuenta</h1>
+          <div className="alert alert-error">No se encontró token de activación en la URL.</div>
+          <Link to="/login" className="button button-secondary" style={{ marginTop: 12 }}>Ir a iniciar sesión</Link>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="container" style={{ maxWidth: 440 }}>
-      <div className="card">
-        <h1 style={{ marginTop: 0 }}>Activar cuenta</h1>
-        <p>Define una contraseña para finalizar tu activación.</p>
-        <form onSubmit={onSubmit}>
-          <label htmlFor="password">Nueva contraseña (mínimo 8 caracteres)</label>
-          <input
-            id="password"
-            type="password"
-            minLength={8}
-            className="input"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-          <label htmlFor="confirmPassword" style={{ marginTop: 10, display: "block" }}>
-            Confirmar contraseña
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            minLength={8}
-            className="input"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            required
-          />
-          <button className="button" type="submit" style={{ marginTop: 12 }} disabled={loading}>
-            {loading ? "Activando..." : "Activar cuenta"}
-          </button>
-        </form>
-        {status.success ? <p className="success">{status.success}</p> : null}
-        {status.error ? <p className="error">{status.error}</p> : null}
+    <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+        <h1 className="page-title" style={{ marginBottom: 4 }}>Activar cuenta</h1>
+        <p className="page-subtitle">Define una contraseña segura para finalizar tu activación.</p>
+
+        {status.success ? (
+          <>
+            <div className="alert alert-success">{status.success}</div>
+            <Link to="/login" className="button button-primary" style={{ width: "100%", marginTop: 8 }}>
+              Ir a iniciar sesión
+            </Link>
+          </>
+        ) : (
+          <form onSubmit={onSubmit}>
+            <div className="form-group">
+              <label htmlFor="password">Nueva contraseña (mínimo 8 caracteres)</label>
+              <input
+                id="password"
+                type="password"
+                minLength={8}
+                className="input"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="confirmPassword">Confirmar contraseña</label>
+              <input
+                id="confirmPassword"
+                type="password"
+                minLength={8}
+                className="input"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+            <button className="button button-primary" type="submit" style={{ width: "100%", marginTop: 4 }} disabled={loading}>
+              {loading ? "Activando..." : "Activar cuenta"}
+            </button>
+          </form>
+        )}
+        {status.error && <div className="alert alert-error" style={{ marginTop: 12 }}>{status.error}</div>}
       </div>
     </main>
   );

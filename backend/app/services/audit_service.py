@@ -17,6 +17,8 @@ class AuditService:
         actor_user_id: Optional[int] = None,
         resource_id: Optional[str] = None,
         detail: Optional[str] = None,
+        hash_related: Optional[str] = None,
+        certificate_id: Optional[int] = None,
         request: Optional[Request] = None,
     ) -> AuditLog:
         ip_address = request.client.host if request and request.client else None
@@ -27,6 +29,8 @@ class AuditService:
             resource_id=resource_id,
             result=result,
             detail=detail,
+            hash_related=hash_related,
+            certificate_id=certificate_id,
             ip_address=ip_address,
         )
         return AuditRepository.create(db, entry)
