@@ -64,6 +64,9 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    // Limpiar cualquier estado de signing residual
+    sessionStorage.removeItem("signing_status");
+    sessionStorage.removeItem("signing_cert");
     setToken(null);
     setUser(null);
   };

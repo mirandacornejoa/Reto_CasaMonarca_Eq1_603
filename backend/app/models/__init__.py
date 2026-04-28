@@ -5,6 +5,7 @@ from app.models.audit_log import AuditLog
 from app.models.certificate import Certificate
 from app.models.credential import Credential
 from app.models.document import Document
+from app.models.document_signature import DocumentSignature
 from app.models.migrant_record import MigrantRecord
 from app.models.otp_token import OtpToken
 from app.models.permission import Permission
@@ -20,6 +21,7 @@ __all__ = [
     "Certificate",
     "Credential",
     "Document",
+    "DocumentSignature",
     "MigrantRecord",
     "OtpToken",
     "Permission",

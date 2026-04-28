@@ -1,6 +1,6 @@
-"""Auth routes — login con 2FA, /me, demo endpoints."""
+"""Auth routes — login con TOTP obligatorio, /me, firma documental."""
 
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -8,25 +8,36 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_admin
+from app.core.deps import get_pre2fa_user, require_active_user, require_admin
 from app.core.security import decode_token
+from app.models.document_signature import DocumentSignature
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     DemoActivationResponse,
     MeResponse,
+    SigningCertEnrollRequest,
+    SigningCertStatusResponse,
+    SigningEnrollResponse,
+    TOTPEnrollBeginResponse,
+    TOTPEnrollConfirmRequest,
+    TOTPStatusResponse,
     TokenResponse,
     TwoFactorChallengeResponse,
+    VerifySignatureRequest,
+    VerifySignatureResponse,
     Verify2FARequest,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.notification_service import NotificationService
+from app.services.signing_service import SigningService
+from app.services.totp_service import TOTPService
 
 router = APIRouter()
 
 
 # ------------------------------------------------------------------ #
-#  Login (paso 1 → 2FA challenge)                                      #
+#  Login (paso 1 → TOTP challenge o enrolamiento obligatorio)          #
 # ------------------------------------------------------------------ #
 @router.post("/login")
 def login(
@@ -48,9 +59,14 @@ def login(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=error)
 
-    # Credenciales OK → enviar OTP para 2FA
-    sent_by_smtp, demo_otp = AuthService.send_otp(db, user)
+    # Credenciales OK → generar token pre-2FA
     session_token = AuthService.build_pre2fa_token(user)
+    needs_enrollment = AuthService.needs_totp_enrollment(user)
+
+    if needs_enrollment:
+        detail_msg = "TOTP enrollment requerido"
+    else:
+        detail_msg = "TOTP requerido"
 
     AuditService.log(
         db=db,
@@ -59,20 +75,21 @@ def login(
         resource="user",
         resource_id=str(user.id),
         result="SUCCESS",
-        detail="OTP enviado" if sent_by_smtp else "OTP generado (modo demo)",
+        detail=detail_msg,
         request=request,
     )
 
     response = TwoFactorChallengeResponse(
         requires_2fa=True,
         session_token=session_token,
-        demo_otp=demo_otp,
+        two_fa_type="totp",
+        requires_totp_enrollment=needs_enrollment,
     )
     return response
 
 
 # ------------------------------------------------------------------ #
-#  Verificar OTP (paso 2 → JWT final)                                  #
+#  Verificar TOTP (paso 2 → JWT final)                                 #
 # ------------------------------------------------------------------ #
 @router.post("/verify-2fa", response_model=TokenResponse)
 def verify_2fa(
@@ -94,8 +111,8 @@ def verify_2fa(
             detail="Token no es de pre-autenticación",
         )
 
-    # Verificar OTP
-    user = AuthService.verify_otp(db, user_id, payload.otp_code)
+    # Solo verificar TOTP (único 2FA soportado)
+    user = AuthService.verify_totp(db, user_id, payload.otp_code)
     if not user:
         AuditService.log(
             db=db,
@@ -104,15 +121,15 @@ def verify_2fa(
             resource="user",
             resource_id=str(user_id),
             result="FAILURE",
-            detail="Código OTP inválido o expirado",
+            detail="Código TOTP inválido",
             request=request,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Código de verificación inválido o expirado",
+            detail="Código TOTP inválido. Verifica que la hora de tu dispositivo esté sincronizada.",
         )
 
-    # OTP válido → emitir JWT final
+    # TOTP válido → emitir JWT final
     token = AuthService.build_token(user)
 
     AuditService.log(
@@ -131,7 +148,7 @@ def verify_2fa(
         resource="user",
         resource_id=str(user.id),
         result="SUCCESS",
-        detail="Login completado con 2FA",
+        detail="Login completado con TOTP",
         request=request,
     )
 
@@ -165,3 +182,280 @@ def me(current_user=Depends(require_active_user)):
 @router.get("/demo/activation-links", response_model=List[DemoActivationResponse])
 def get_demo_activation_links(_: object = Depends(require_admin)):
     return NotificationService.get_demo_activation_links()
+
+
+# ================================================================== #
+#  TOTP — enrolamiento y gestión                                       #
+#  NOTA: begin/confirm usan get_pre2fa_user para permitir              #
+#  enrolamiento durante primer login (antes de tener token completo)   #
+# ================================================================== #
+
+@router.get("/totp/status", response_model=TOTPStatusResponse)
+def totp_status(current_user=Depends(require_active_user)):
+    """Retorna si el usuario tiene TOTP enrolado."""
+    cred = current_user.credential
+    enrolled_at = None
+    if cred and cred.totp_enrolled_at:
+        enrolled_at = cred.totp_enrolled_at.isoformat()
+    return TOTPStatusResponse(
+        totp_enrolled=TOTPService.is_enrolled(current_user),
+        totp_enrolled_at=enrolled_at,
+    )
+
+
+@router.post("/totp/enroll/begin", response_model=TOTPEnrollBeginResponse)
+def totp_enroll_begin(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_pre2fa_user),
+):
+    """Genera secreto TOTP y QR. Acepta token pre_2fa para primer enrolamiento."""
+    result = TOTPService.begin_enrollment(current_user)
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="totp.enroll_begin",
+        resource="user",
+        resource_id=str(current_user.id),
+        result="SUCCESS",
+        request=request,
+    )
+    return TOTPEnrollBeginResponse(**result)
+
+
+@router.post("/totp/enroll/confirm")
+def totp_enroll_confirm(
+    payload: TOTPEnrollConfirmRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_pre2fa_user),
+):
+    """Confirma el enrolamiento TOTP validando un código de la app. Acepta token pre_2fa."""
+    ok = TOTPService.confirm_enrollment(db, current_user, payload.secret_plain, payload.totp_code)
+    if not ok:
+        AuditService.log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="totp.enroll_failure",
+            resource="user",
+            resource_id=str(current_user.id),
+            result="FAILURE",
+            detail="Código TOTP incorrecto al confirmar enrolamiento",
+            request=request,
+        )
+        raise HTTPException(status_code=400, detail="Código TOTP incorrecto. Verifica la hora de tu dispositivo.")
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="totp.enrolled",
+        resource="user",
+        resource_id=str(current_user.id),
+        result="SUCCESS",
+        request=request,
+    )
+    return {"message": "TOTP enrolado correctamente"}
+
+
+@router.delete("/totp/revoke/{user_id}")
+def totp_revoke(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_active_user),
+):
+    """Admin: revoca/resetea el TOTP de un usuario (pérdida de dispositivo)."""
+    if current_user.access_level.code != 1 and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Sin permisos")
+
+    target = UserRepository.get_by_id(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    TOTPService.revoke_totp(db, target)
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="totp.revoked",
+        resource="user",
+        resource_id=str(user_id),
+        result="SUCCESS",
+        detail=f"TOTP revocado por usuario {current_user.id}",
+        request=request,
+    )
+    return {"message": "TOTP revocado. El usuario deberá enrolarse de nuevo."}
+
+
+# ================================================================== #
+#  Firma documental — certificado de firma (Web Crypto)               #
+# ================================================================== #
+
+@router.get("/signing/status", response_model=SigningCertStatusResponse)
+def signing_cert_status(current_user=Depends(require_active_user)):
+    """Estado del certificado de firma del usuario autenticado."""
+    for cert in current_user.certificates:
+        if cert.cert_type == "SIGNING" and cert.status == "VALID":
+            return SigningCertStatusResponse(
+                has_signing_cert=True,
+                cert_id=cert.id,
+                serial_number=cert.serial_number,
+                status=cert.status,
+                issued_at=cert.issued_at.isoformat(),
+                expires_at=cert.expires_at.isoformat(),
+                fingerprint=cert.fingerprint,
+            )
+    return SigningCertStatusResponse(has_signing_cert=False)
+
+
+@router.post("/signing/enroll", response_model=SigningEnrollResponse)
+def signing_enroll(
+    payload: SigningCertEnrollRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_active_user),
+):
+    """
+    Genera certificado de firma tipo SAT.
+
+    El backend genera el par de claves ECDSA P-256, emite un certificado
+    X.509 autofirmado (.cer), y cifra la clave privada con la contraseña
+    del usuario (.key). La clave privada NO se guarda en el backend.
+
+    Los archivos se devuelven UNA SOLA VEZ para descarga inmediata.
+    """
+    cert, cer_pem, key_pem = SigningService.generate_signing_certificate(
+        db=db,
+        user=current_user,
+        key_password=payload.key_password,
+        issued_by=current_user.id,
+        years=payload.years,
+    )
+    db.commit()
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="signing.enrolled",
+        resource="certificate",
+        resource_id=str(cert.id),
+        result="SUCCESS",
+        detail=f"Certificado de firma SAT generado: {cert.serial_number[:16]}...",
+        request=request,
+    )
+
+    cert_status = SigningCertStatusResponse(
+        has_signing_cert=True,
+        cert_id=cert.id,
+        serial_number=cert.serial_number,
+        status=cert.status,
+        issued_at=cert.issued_at.isoformat(),
+        expires_at=cert.expires_at.isoformat(),
+        fingerprint=cert.fingerprint,
+    )
+
+    return SigningEnrollResponse(
+        certificate=cert_status,
+        cer_pem=cer_pem,
+        key_pem=key_pem,
+    )
+
+
+@router.get("/signing/certificate/download")
+def download_signing_certificate(
+    current_user=Depends(require_active_user),
+):
+    """
+    Descarga el certificado público (.cer) del usuario autenticado.
+    Solo retorna el certificado del usuario dueño — nunca de otro usuario.
+    """
+    cer_pem = SigningService.get_user_certificate_pem(current_user)
+    if not cer_pem:
+        raise HTTPException(status_code=404, detail="No tiene certificado de firma activo")
+    return {"cer_pem": cer_pem}
+
+
+@router.post("/signing/verify", response_model=VerifySignatureResponse)
+def signing_verify(
+    payload: VerifySignatureRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_active_user),
+):
+    """Verifica una firma ECDSA enviada desde el navegador y registra evidencia."""
+    is_valid, message = SigningService.verify_signature(
+        db=db,
+        user=current_user,
+        resource_type=payload.resource_type,
+        resource_id=payload.resource_id,
+        content_hash=payload.content_hash,
+        signature_b64=payload.signature_b64,
+    )
+    db.commit()
+    action = "signing.verified" if is_valid else "signing.verify_failed"
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action=action,
+        resource=payload.resource_type,
+        resource_id=str(payload.resource_id),
+        result="SUCCESS" if is_valid else "FAILURE",
+        detail=message,
+        request=request,
+    )
+    return VerifySignatureResponse(is_valid=is_valid, message=message)
+
+
+@router.get("/signing/signatures/{resource_type}/{resource_id}")
+def get_resource_signatures(
+    resource_type: str,
+    resource_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_active_user),
+):
+    """Consulta las firmas de un recurso (document o migrant_record)."""
+    sigs = (
+        db.query(DocumentSignature)
+        .filter(
+            DocumentSignature.resource_type == resource_type,
+            DocumentSignature.resource_id == resource_id,
+        )
+        .order_by(DocumentSignature.signed_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "signer_user_id": s.signer_user_id,
+            "signer_name": s.signer.full_name if s.signer else None,
+            "certificate_id": s.certificate_id,
+            "content_hash": s.content_hash,
+            "algorithm": s.algorithm,
+            "signed_at": s.signed_at.isoformat() if s.signed_at else None,
+            "last_verification_result": s.last_verification_result,
+        }
+        for s in sigs
+    ]
+
+
+@router.delete("/signing/revoke/{user_id}")
+def signing_revoke(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_active_user),
+):
+    """Admin: revoca el certificado de firma de un usuario."""
+    if current_user.access_level.code != 1:
+        raise HTTPException(status_code=403, detail="Solo administradores")
+    target = UserRepository.get_by_id(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    SigningService.revoke_signing_certificate(db, target, revoked_by=current_user.id)
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="signing.revoked",
+        resource="user",
+        resource_id=str(user_id),
+        result="SUCCESS",
+        request=request,
+    )
+    return {"message": "Certificado de firma revocado."}

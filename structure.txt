@@ -1,0 +1,20 @@
+proyecto-web-1
+│
+├── .venv
+├── backend
+├── frontend
+├── tests
+├── docs
+├── .env
+├── .gitignore
+├── README.md
+└── requirements.txt
+
+docs/ai-notes/
+Y ahí guardes cosas como:
+
+prompts útiles,
+decisiones sugeridas por IA que sí adoptaste,
+pendientes,
+fragmentos de arquitectura,
+dudas técnicas resueltas.

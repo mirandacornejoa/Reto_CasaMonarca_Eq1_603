@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
+
+
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -19,6 +21,7 @@ from app.repositories.role_repository import RoleRepository
 from app.repositories.user_repository import UserRepository
 from app.services.crypto_service import CryptoService
 from app.services.notification_service import NotificationService
+from app.services.password_policy import PasswordPolicy
 from app.utils.token_utils import hash_token
 
 # Vigencia por defecto: 1 año
@@ -130,6 +133,11 @@ class IdentityService:
         # Solo se puede activar si está PENDING
         if user.status != "PENDING":
             return None
+
+        # Validar política de contraseñas
+        is_valid, error_msg = PasswordPolicy.validate(password, email=user.email)
+        if not is_valid:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
         # Materializar credencial con password_hash en Credential (no en User)
         user.status = "ACTIVE"

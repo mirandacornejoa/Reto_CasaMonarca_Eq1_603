@@ -30,6 +30,9 @@ function AppNav() {
           </>
         )}
 
+        <Link to="/security/totp" className={isActive("/security/totp")}>2FA (TOTP)</Link>
+        <Link to="/security/signing" className={isActive("/security/signing")}>Firma</Link>
+
         <button type="button" className="nav-link" onClick={logout} style={{ color: "var(--danger)" }}>
           Cerrar sesión
         </button>

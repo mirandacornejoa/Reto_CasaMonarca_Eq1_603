@@ -12,3 +12,5 @@ email-validator==2.1.1
 python-multipart==0.0.9
 cryptography>=42.0.0
 pytest==8.1.1
+pyotp==2.9.0
+qrcode[pil]==7.4.2

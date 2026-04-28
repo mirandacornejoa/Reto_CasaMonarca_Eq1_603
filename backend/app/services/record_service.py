@@ -1,6 +1,7 @@
-"""Servicio de registros de migrantes — CRUD con hash SHA-256."""
+"""Servicio de registros de migrantes — CRUD con hash SHA-256 y cifrado de campos sensibles."""
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -9,6 +10,25 @@ from sqlalchemy.orm import Session
 from app.models.migrant_record import MigrantRecord
 from app.repositories.record_repository import RecordRepository
 from app.services.crypto_service import CryptoService
+from app.services.field_encryption_service import FieldEncryptionService
+
+
+def _encryption_enabled() -> bool:
+    return bool(os.getenv("FIELD_ENCRYPTION_KEY", ""))
+
+
+def _encrypt_field(value: Optional[str]) -> Optional[str]:
+    if value is None or not _encryption_enabled():
+        return value
+    return FieldEncryptionService.encrypt(value)
+
+
+def _decrypt_field(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if not _encryption_enabled():
+        return value
+    return FieldEncryptionService.decrypt_or_none(value)
 
 
 class RecordService:
@@ -73,12 +93,14 @@ class RecordService:
 
         record = MigrantRecord(
             folio=folio,
-            name_or_alias=name_or_alias,
+            name_or_alias=name_or_alias,  # campo en claro (búsquedas)
+            name_or_alias_enc=_encrypt_field(name_or_alias),  # versión cifrada
             nationality=nationality,
             language=language,
             age_range=age_range,
             gender=gender,
             contact_info=contact_info,
+            contact_info_enc=_encrypt_field(contact_info),
             needs=needs_json,
             registration_date=registration_date or datetime.now(timezone.utc),
             observations=observations,
@@ -117,6 +139,7 @@ class RecordService:
     ) -> MigrantRecord:
         if name_or_alias is not None:
             record.name_or_alias = name_or_alias
+            record.name_or_alias_enc = _encrypt_field(name_or_alias)
         if nationality is not None:
             record.nationality = nationality
         if language is not None:
@@ -127,6 +150,7 @@ class RecordService:
             record.gender = gender
         if contact_info is not None:
             record.contact_info = contact_info
+            record.contact_info_enc = _encrypt_field(contact_info)
         if needs is not None:
             record.needs = json.dumps(needs, ensure_ascii=False)
         if observations is not None:
@@ -160,3 +184,10 @@ class RecordService:
         limit: int = 200,
     ) -> List[MigrantRecord]:
         return RecordRepository.list_all(db, area_id=area_id, status=status, search=search, limit=limit)
+
+    @staticmethod
+    def delete_record(db: Session, record: MigrantRecord) -> None:
+        """Elimina un registro de la base de datos (hard delete)."""
+        db.delete(record)
+        db.commit()
+

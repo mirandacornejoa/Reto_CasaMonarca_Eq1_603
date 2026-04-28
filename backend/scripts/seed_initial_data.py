@@ -1,4 +1,17 @@
-"""Seed inicial de niveles, permisos, roles, áreas, usuarios demo con certificados, registros y plantilla de ejemplo."""
+"""Seed inicial de niveles, permisos, roles, áreas, usuarios base con certificados, registros y plantilla de ejemplo.
+
+Esquema RBAC:
+  - Nivel 1 (Admin):       CRUD completo
+  - Nivel 2 (Coordinador): CRU (sin eliminar)
+  - Nivel 3 (Operativo):   CR (sin editar ni eliminar)
+  - Nivel 4 (Externo):     C (solo crear)
+
+Usuarios base:
+  - 2 administradores (producción + contingencia)
+  - 5 coordinadores (uno por área)
+  - 1 operativo base
+  - 1 externo base (voluntario)
+"""
 
 import json
 from datetime import datetime, timedelta, timezone
@@ -20,79 +33,76 @@ from app.models.user import User
 from app.services.crypto_service import CryptoService
 
 
+# ──────────────────────────────────────────────────────────────────
+#  Datos base
+# ──────────────────────────────────────────────────────────────────
+
 BASE_PERMISSIONS = [
-    {
-        "code": "scope.consult",
-        "name": "Consultar información",
-        "description": "Permite consultar información",
-    },
-    {
-        "code": "scope.edit",
-        "name": "Consultar y editar información",
-        "description": "Permite consultar y editar información",
-    },
-    {
-        "code": "scope.authorize",
-        "name": "Consultar, editar y autorizar",
-        "description": "Permite consultar, editar y autorizar información",
-    },
-    {
-        "code": "scope.template_manage",
-        "name": "Crear/modificar plantillas",
-        "description": "Permite crear plantillas y nuevos documentos",
-    },
-    {
-        "code": "identity.manage_users",
-        "name": "Gestionar usuarios",
-        "description": "Alta, cambio de niveles y activación/desactivación",
-    },
-    {
-        "code": "records.create",
-        "name": "Crear registros",
-        "description": "Permite crear registros de migrantes",
-    },
-    {
-        "code": "records.read",
-        "name": "Leer registros",
-        "description": "Permite consultar registros de migrantes",
-    },
-    {
-        "code": "records.edit",
-        "name": "Editar registros",
-        "description": "Permite editar registros de migrantes",
-    },
-    {
-        "code": "certificates.read",
-        "name": "Consultar certificados",
-        "description": "Permite consultar certificados emitidos",
-    },
-    {
-        "code": "audit.read",
-        "name": "Consultar bitácora",
-        "description": "Permite consultar la bitácora de auditoría",
-    },
-    {
-        "code": "templates.manage",
-        "name": "Gestionar plantillas",
-        "description": "Permite crear, editar y desactivar plantillas",
-    },
+    {"code": "records.create", "name": "Crear registros", "description": "Permite crear registros de migrantes"},
+    {"code": "records.read", "name": "Leer registros", "description": "Permite consultar registros de migrantes"},
+    {"code": "records.edit", "name": "Editar registros", "description": "Permite editar registros de migrantes"},
+    {"code": "records.delete", "name": "Eliminar registros", "description": "Permite eliminar registros de migrantes"},
+    {"code": "identity.manage_users", "name": "Gestionar usuarios", "description": "Alta, cambio de niveles y activación/desactivación"},
+    {"code": "certificates.read", "name": "Consultar certificados", "description": "Permite consultar certificados emitidos"},
+    {"code": "audit.read", "name": "Consultar bitácora", "description": "Permite consultar la bitácora de auditoría"},
+    {"code": "templates.manage", "name": "Gestionar plantillas", "description": "Permite crear, editar y desactivar plantillas"},
 ]
 
 BASE_LEVELS = [
-    {"code": 1, "name": "Nivel 1 - Administradores del sistema", "description": "Administración total"},
-    {"code": 2, "name": "Nivel 2 - Coordinadores de área", "description": "Gestión por área"},
-    {"code": 3, "name": "Nivel 3 - Personal operativo", "description": "Operación interna"},
-    {"code": 4, "name": "Nivel 4 - Personal externo", "description": "Consulta externa"},
+    {"code": 1, "name": "Nivel 1 - Administradores del sistema", "description": "CRUD completo, administración total"},
+    {"code": 2, "name": "Nivel 2 - Coordinadores de área", "description": "CRU, gestión por área sin eliminación"},
+    {"code": 3, "name": "Nivel 3 - Personal operativo", "description": "CR, consulta y creación"},
+    {"code": 4, "name": "Nivel 4 - Personal externo", "description": "C, solo creación (becarios, voluntarios, servicio social, recepción)"},
 ]
 
 BASE_AREAS = [
     {"name": "Administración", "description": "Área administrativa"},
-    {"name": "Operaciones", "description": "Área operativa"},
-    {"name": "Atención al migrante", "description": "Área de atención directa al migrante"},
+    {"name": "Legal", "description": "Área de asesoría legal y documentación"},
+    {"name": "Psicosocial", "description": "Área de atención psicosocial"},
+    {"name": "Humanitario", "description": "Área de atención humanitaria directa"},
+    {"name": "Comunicación", "description": "Área de comunicación y difusión"},
 ]
 
-# Usuarios demo con sus credenciales
-DEMO_USERS = [
+# Permisos asignados a cada rol
+ROLE_DEFINITIONS = {
+    "SYSTEM_ADMIN": {
+        "description": "Administrador del sistema",
+        "level_code": 1,
+        "area_scoped": False,
+        "permissions": [
+            "records.create", "records.read", "records.edit", "records.delete",
+            "identity.manage_users", "certificates.read", "audit.read", "templates.manage",
+        ],
+    },
+    "AREA_COORDINATOR": {
+        "description": "Coordinador de área",
+        "level_code": 2,
+        "area_scoped": True,
+        "permissions": [
+            "records.create", "records.read", "records.edit",
+        ],
+    },
+    "AREA_OPERATOR": {
+        "description": "Personal operativo",
+        "level_code": 3,
+        "area_scoped": True,
+        "permissions": [
+            "records.create", "records.read",
+        ],
+    },
+    "EXTERNAL_STAFF": {
+        "description": "Personal externo",
+        "level_code": 4,
+        "area_scoped": False,
+        "permissions": [
+            "records.create",
+        ],
+    },
+}
+
+# Usuarios base realistas
+BASE_USERS = [
+    # ── Administradores (2) ──
     {
         "full_name": settings.ADMIN_FULL_NAME,
         "email": settings.ADMIN_EMAIL.lower(),
@@ -102,28 +112,71 @@ DEMO_USERS = [
         "area_name": "Administración",
     },
     {
-        "full_name": "María García López",
-        "email": "coordinador@demo.org",
-        "password": "Coord123!",
+        "full_name": "Admin Contingencia",
+        "email": "contingencia@demo.org",
+        "password": "Contingencia2026!",
+        "level_code": 1,
+        "role_name": "SYSTEM_ADMIN",
+        "area_name": "Administración",
+    },
+    # ── Coordinadores por área (5) ──
+    {
+        "full_name": "Laura Rodríguez Mora",
+        "email": "coord.admin@demo.org",
+        "password": "CoordAdmin2026!",
         "level_code": 2,
         "role_name": "AREA_COORDINATOR",
-        "area_name": "Atención al migrante",
+        "area_name": "Administración",
     },
+    {
+        "full_name": "Roberto Sánchez Vega",
+        "email": "coord.legal@demo.org",
+        "password": "CoordLegal2026!",
+        "level_code": 2,
+        "role_name": "AREA_COORDINATOR",
+        "area_name": "Legal",
+    },
+    {
+        "full_name": "Patricia Flores Torres",
+        "email": "coord.psicosocial@demo.org",
+        "password": "CoordPsico2026!",
+        "level_code": 2,
+        "role_name": "AREA_COORDINATOR",
+        "area_name": "Psicosocial",
+    },
+    {
+        "full_name": "Miguel Ángel Díaz Ortiz",
+        "email": "coord.humanitario@demo.org",
+        "password": "CoordHuman2026!",
+        "level_code": 2,
+        "role_name": "AREA_COORDINATOR",
+        "area_name": "Humanitario",
+    },
+    {
+        "full_name": "Carmen Gutiérrez Luna",
+        "email": "coord.comunicacion@demo.org",
+        "password": "CoordComun2026!",
+        "level_code": 2,
+        "role_name": "AREA_COORDINATOR",
+        "area_name": "Comunicación",
+    },
+    # ── Operativo base (1) ──
     {
         "full_name": "Carlos Hernández Ruiz",
         "email": "operador@demo.org",
-        "password": "Oper123!",
+        "password": "Oper2026Seguro!",
         "level_code": 3,
         "role_name": "AREA_OPERATOR",
-        "area_name": "Operaciones",
+        "area_name": "Humanitario",
     },
+    # ── Externo base (1) ──
     {
         "full_name": "Ana Martínez Soto",
-        "email": "externo@demo.org",
-        "password": "Ext123!",
+        "email": "voluntario@demo.org",
+        "password": "Voluntario2026!",
         "level_code": 4,
         "role_name": "EXTERNAL_STAFF",
-        "area_name": "Operaciones",
+        "area_name": None,  # Sin área asignada
     },
 ]
 
@@ -138,7 +191,7 @@ DEMO_RECORDS = [
         "needs": ["alimentación", "alojamiento", "atención médica"],
         "observations": "Llegó acompañado de un menor. Requiere atención médica básica.",
         "status": "REGISTRADO",
-        "area_name": "Atención al migrante",
+        "area_name": "Humanitario",
     },
     {
         "name_or_alias": "María del Carmen",
@@ -149,7 +202,7 @@ DEMO_RECORDS = [
         "needs": ["apoyo legal", "documentación"],
         "observations": "Solicitante de asilo. Documentación en proceso.",
         "status": "EN_PROCESO",
-        "area_name": "Atención al migrante",
+        "area_name": "Legal",
     },
     {
         "name_or_alias": "Roberto L.",
@@ -160,7 +213,7 @@ DEMO_RECORDS = [
         "needs": ["alimentación", "transporte"],
         "observations": "Tránsito hacia el norte. Apoyo con alimentación y hospedaje temporal.",
         "status": "ATENDIDO",
-        "area_name": "Operaciones",
+        "area_name": "Humanitario",
     },
     {
         "name_or_alias": "Familia Gómez",
@@ -171,7 +224,7 @@ DEMO_RECORDS = [
         "needs": ["alojamiento", "alimentación", "comunicación"],
         "observations": "Grupo familiar de 4 personas. Niños en edad escolar.",
         "status": "REGISTRADO",
-        "area_name": "Atención al migrante",
+        "area_name": "Psicosocial",
     },
     {
         "name_or_alias": "Pedro S.",
@@ -182,7 +235,7 @@ DEMO_RECORDS = [
         "needs": ["apoyo psicológico"],
         "observations": "Caso cerrado. Reubicación completada.",
         "status": "CERRADO",
-        "area_name": "Operaciones",
+        "area_name": "Psicosocial",
     },
 ]
 
@@ -197,16 +250,24 @@ BASE_TEMPLATE_FIELDS = [
     {"name": "contact_info", "label": "Medio de contacto", "field_type": "text", "required": False},
     {"name": "needs", "label": "Necesidades principales", "field_type": "multiselect", "required": False,
      "options": ["alimentación", "alojamiento", "atención médica", "apoyo psicológico",
-                 "apoyo legal", "documentación", "transporte", "comunicación"]},
+                  "apoyo legal", "documentación", "transporte", "comunicación"]},
     {"name": "observations", "label": "Observaciones iniciales", "field_type": "textarea", "required": False},
     {"name": "status", "label": "Estatus del caso", "field_type": "select", "required": True,
      "options": ["REGISTRADO", "EN_PROCESO", "ATENDIDO", "CERRADO"]},
 ]
 
 
+# ──────────────────────────────────────────────────────────────────
+#  Helpers de creación idempotente
+# ──────────────────────────────────────────────────────────────────
+
 def get_or_create_permission(db: Session, data: dict) -> Permission:
     permission = db.query(Permission).filter(Permission.code == data["code"]).first()
     if permission:
+        permission.name = data["name"]
+        permission.description = data.get("description")
+        db.add(permission)
+        db.flush()
         return permission
     permission = Permission(**data)
     db.add(permission)
@@ -217,6 +278,10 @@ def get_or_create_permission(db: Session, data: dict) -> Permission:
 def get_or_create_level(db: Session, data: dict) -> AccessLevel:
     level = db.query(AccessLevel).filter(AccessLevel.code == data["code"]).first()
     if level:
+        level.name = data["name"]
+        level.description = data.get("description")
+        db.add(level)
+        db.flush()
         return level
     level = AccessLevel(**data)
     db.add(level)
@@ -268,21 +333,21 @@ def get_or_create_role(
     return role
 
 
-def create_demo_user(
+def create_base_user(
     db: Session,
     user_data: dict,
     roles_by_name: dict,
     areas_by_name: dict,
     levels_by_code: dict,
 ) -> User:
-    """Crea un usuario demo ACTIVE con contraseña, credencial y certificado."""
+    """Crea un usuario base ACTIVE con contraseña, credencial y certificado."""
     existing = db.query(User).filter(User.email == user_data["email"]).first()
     if existing:
         print(f"  Usuario {user_data['email']} ya existe, omitido.")
         return existing
 
     role = roles_by_name[user_data["role_name"]]
-    area = areas_by_name[user_data["area_name"]]
+    area = areas_by_name.get(user_data["area_name"]) if user_data.get("area_name") else None
     level = levels_by_code[user_data["level_code"]]
 
     now = datetime.now(timezone.utc)
@@ -293,7 +358,7 @@ def create_demo_user(
         email=user_data["email"],
         status="ACTIVE",
         is_active=True,
-        area_id=area.id,
+        area_id=area.id if area else None,
         access_level_id=level.id,
         role_id=role.id,
         created_by_id=None,
@@ -314,20 +379,18 @@ def create_demo_user(
     db.add(credential)
     db.flush()
 
-    # Certificado criptográfico
+    # Certificado criptográfico de identidad
     cert = CryptoService.issue_certificate(db, user, expires_at, issued_by=user.id)
 
-    # Audit entry: creación
+    # Audit entry
     db.add(AuditLog(
         actor_user_id=user.id,
         action="identity.create_user",
         resource="user",
         resource_id=str(user.id),
         result="SUCCESS",
-        detail=f"[SEED] Usuario demo creado con nivel {user_data['level_code']}",
+        detail=f"[SEED] Usuario base creado con nivel {user_data['level_code']}",
     ))
-
-    # Audit entry: emisión de certificado
     db.add(AuditLog(
         actor_user_id=user.id,
         action="certificates.issue",
@@ -340,7 +403,8 @@ def create_demo_user(
     ))
 
     db.flush()
-    print(f"  [OK] Usuario: {user.email} | Nivel: {user_data['level_code']} | Cert: {cert.serial_number[:12]}...")
+    area_label = user_data.get("area_name") or "Sin área"
+    print(f"  [OK] {user.email} | Nivel: {user_data['level_code']} | Área: {area_label} | Cert: {cert.serial_number[:12]}...")
     return user
 
 
@@ -406,7 +470,7 @@ def create_demo_records(db: Session, admin_user: User, areas_by_name: dict) -> N
             resource="migrant_record",
             resource_id=str(record.id),
             result="SUCCESS",
-            detail=f"[SEED] Registro demo: {record.folio} - {record.name_or_alias}",
+            detail=f"[SEED] Registro: {record.folio} - {record.name_or_alias}",
             hash_related=record.sha256_hash,
         ))
 
@@ -444,6 +508,10 @@ def create_base_template(db: Session, admin_user: User) -> None:
     print(f"  [OK] Plantilla: {template.name}")
 
 
+# ──────────────────────────────────────────────────────────────────
+#  Seed principal
+# ──────────────────────────────────────────────────────────────────
+
 def seed() -> None:
     db = SessionLocal()
     try:
@@ -461,83 +529,31 @@ def seed() -> None:
 
         db.flush()
 
-        level_1 = db.query(AccessLevel).filter(AccessLevel.code == 1).first()
-        level_2 = db.query(AccessLevel).filter(AccessLevel.code == 2).first()
-        level_3 = db.query(AccessLevel).filter(AccessLevel.code == 3).first()
-        level_4 = db.query(AccessLevel).filter(AccessLevel.code == 4).first()
+        # Lookup tables
+        levels_by_code = {lv.code: lv for lv in db.query(AccessLevel).all()}
 
         print("=== Seed: Roles ===")
-        get_or_create_role(
-            db,
-            name="SYSTEM_ADMIN",
-            description="Administrador del sistema",
-            level=level_1,
-            permission_codes=[
-                "scope.consult",
-                "scope.edit",
-                "scope.authorize",
-                "scope.template_manage",
-                "identity.manage_users",
-                "records.create",
-                "records.read",
-                "records.edit",
-                "certificates.read",
-                "audit.read",
-                "templates.manage",
-            ],
-            area_scoped=False,
-        )
-        get_or_create_role(
-            db,
-            name="AREA_COORDINATOR",
-            description="Coordinador de área",
-            level=level_2,
-            permission_codes=[
-                "scope.consult",
-                "scope.edit",
-                "scope.authorize",
-                "records.create",
-                "records.read",
-                "records.edit",
-            ],
-            area_scoped=True,
-        )
-        get_or_create_role(
-            db,
-            name="AREA_OPERATOR",
-            description="Personal operativo",
-            level=level_3,
-            permission_codes=[
-                "scope.consult",
-                "scope.edit",
-                "records.create",
-                "records.read",
-                "records.edit",
-            ],
-            area_scoped=True,
-        )
-        get_or_create_role(
-            db,
-            name="EXTERNAL_STAFF",
-            description="Personal externo",
-            level=level_4,
-            permission_codes=[
-                "scope.consult",
-            ],
-            area_scoped=False,
-        )
+        for role_name, role_def in ROLE_DEFINITIONS.items():
+            level = levels_by_code[role_def["level_code"]]
+            get_or_create_role(
+                db,
+                name=role_name,
+                description=role_def["description"],
+                level=level,
+                permission_codes=role_def["permissions"],
+                area_scoped=role_def["area_scoped"],
+            )
 
         db.flush()
 
         # Preparar lookup tables
         roles_by_name = {r.name: r for r in db.query(Role).all()}
         areas_by_name = {a.name: a for a in db.query(Area).all()}
-        levels_by_code = {lv.code: lv for lv in db.query(AccessLevel).all()}
 
-        print("=== Seed: Usuarios demo ===")
+        print("=== Seed: Usuarios base ===")
         users = []
-        for user_data in DEMO_USERS:
-            u = create_demo_user(db, user_data, roles_by_name, areas_by_name, levels_by_code)
+        for user_data in BASE_USERS:
+            u = create_base_user(db, user_data, roles_by_name, areas_by_name, levels_by_code)
             users.append(u)
 
         admin_user = users[0]
@@ -550,9 +566,10 @@ def seed() -> None:
 
         db.commit()
         print("\n[OK] Seed completado correctamente.")
-        print("\n--- Credenciales de usuarios demo ---")
-        for ud in DEMO_USERS:
-            print(f"  {ud['email']} / {ud['password']} (Nivel {ud['level_code']})")
+        print("\n--- Credenciales de usuarios base ---")
+        for ud in BASE_USERS:
+            area_label = ud.get("area_name") or "Sin área"
+            print(f"  {ud['email']} / {ud['password']} (Nivel {ud['level_code']}, {area_label})")
 
     finally:
         db.close()

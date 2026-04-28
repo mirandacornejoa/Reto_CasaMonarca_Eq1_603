@@ -1,7 +1,5 @@
-"""AuthService — login, JWT, sesión, 2FA. NO gestiona ciclo de vida de identidad."""
+"""AuthService — login, JWT, sesión, 2FA exclusivamente TOTP. NO gestiona ciclo de vida de identidad."""
 
-import hashlib
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
@@ -9,17 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import create_access_token, decode_token, verify_password
-from app.models.otp_token import OtpToken
 from app.models.user import User
-from app.repositories.otp_repository import OtpRepository
 from app.repositories.user_repository import UserRepository
 from app.services.crypto_service import CryptoService
-from app.services.notification_service import NotificationService
-
-
-def _hash_otp(code: str) -> str:
-    """SHA-256 hash of the raw OTP code."""
-    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+from app.services.totp_service import TOTPService
 
 
 class AuthService:
@@ -81,59 +72,25 @@ class AuthService:
         return user, None
 
     # ------------------------------------------------------------------ #
-    #  2FA: enviar OTP                                                     #
+    #  2FA: TOTP exclusivo                                                 #
     # ------------------------------------------------------------------ #
     @staticmethod
-    def send_otp(db: Session, user: User) -> Tuple[bool, Optional[str]]:
-        """Genera OTP de 6 dígitos, persiste hasheado, envía por correo.
+    def needs_totp_enrollment(user: User) -> bool:
+        """True si el usuario NO tiene TOTP enrolado y debe hacerlo."""
+        return not TOTPService.is_enrolled(user)
 
-        Returns:
-            (sent_by_smtp, raw_otp_for_demo_or_none)
-        """
-        # Revocar OTPs anteriores del usuario
-        OtpRepository.revoke_user_otps(db, user.id)
-
-        # Generar OTP de 6 dígitos
-        raw_otp = str(secrets.randbelow(1000000)).zfill(6)
-        otp_hash = _hash_otp(raw_otp)
-
-        otp_token = OtpToken(
-            user_id=user.id,
-            otp_hash=otp_hash,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES),
-        )
-        OtpRepository.create(db, otp_token)
-        db.commit()
-
-        # Enviar por correo (o modo demo)
-        sent = NotificationService.send_otp_code(user.full_name, user.email, raw_otp)
-
-        # En modo demo, retornar el OTP raw para que el frontend lo muestre
-        return sent, None if sent else raw_otp
-
-    # ------------------------------------------------------------------ #
-    #  2FA: verificar OTP                                                  #
-    # ------------------------------------------------------------------ #
     @staticmethod
-    def verify_otp(db: Session, user_id: int, otp_code: str) -> Optional[User]:
-        """Valida el OTP. Retorna User si es válido, None si falla."""
-        otp_hash = _hash_otp(otp_code)
-        otp_token = OtpRepository.get_valid_by_user(db, user_id, otp_hash)
-
-        if not otp_token:
-            return None
-
-        # Consumir el OTP
-        otp_token.consumed_at = datetime.now(timezone.utc)
-        db.add(otp_token)
-
-        # Actualizar last_login_at
+    def verify_totp(db: Session, user_id: int, totp_code: str) -> Optional[User]:
+        """Valida código TOTP. Retorna User si es válido, None si falla."""
         user = UserRepository.get_by_id(db, user_id)
-        if user and user.credential:
+        if not user:
+            return None
+        if not TOTPService.verify(user, totp_code):
+            return None
+        if user.credential:
             user.credential.last_login_at = datetime.now(timezone.utc)
             db.add(user.credential)
-
-        db.commit()
+            db.commit()
         return user
 
     # ------------------------------------------------------------------ #

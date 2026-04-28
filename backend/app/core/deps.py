@@ -45,6 +45,32 @@ def get_current_user(
     return user
 
 
+def get_pre2fa_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> User:
+    """Acepta tokens pre_2fa — usado para enrolamiento TOTP durante primer login."""
+    try:
+        payload = decode_token(token)
+        user_id = int(payload.get("sub"))
+        stage = payload.get("stage")
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas",
+        )
+
+    if stage not in ("pre_2fa", "authenticated"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token de acceso inválido.",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
+    return user
+
+
 def require_active_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_active or current_user.status != "ACTIVE":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo")
@@ -86,6 +112,7 @@ def require_level(max_level: int) -> Callable:
 
 
 # Shortcuts comunes
+require_admin = require_level(1)
 require_coordinator_or_above = require_level(2)
 require_operator_or_above = require_level(3)
 
