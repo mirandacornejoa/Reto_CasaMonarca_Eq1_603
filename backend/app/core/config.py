@@ -76,8 +76,14 @@ class Settings:
         self.OTP_EXPIRE_MINUTES: int = _get_int("OTP_EXPIRE_MINUTES", 10)
         self.PRE2FA_TOKEN_EXPIRE_MINUTES: int = _get_int("PRE2FA_TOKEN_EXPIRE_MINUTES", 10)
 
+        # Cifrado de campos sensibles (Fernet key, generada con Fernet.generate_key())
+        self.FIELD_ENCRYPTION_KEY: Optional[str] = os.getenv("FIELD_ENCRYPTION_KEY")
+
+        # TOTP enrollment token expiry (minutos) — token HTTP para confirmar enrolamiento
+        self.TOTP_ENROLL_TOKEN_EXPIRE_MINUTES: int = _get_int("TOTP_ENROLL_TOKEN_EXPIRE_MINUTES", 10)
+
         self.ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@demo.org")
-        self.ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "Admin123!")
+        self.ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "Admin2026Seguro!")
         self.ADMIN_FULL_NAME: str = os.getenv("ADMIN_FULL_NAME", "Administrador del Sistema")
 
         self.CORS_ORIGINS: List[str] = _get_csv(

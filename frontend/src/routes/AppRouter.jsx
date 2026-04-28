@@ -8,6 +8,8 @@ import UsersAdminPage from "../pages/UsersAdminPage";
 import RecordsPage from "../pages/RecordsPage";
 import AuditPage from "../pages/AuditPage";
 import TemplatesPage from "../pages/TemplatesPage";
+import TOTPSetupPage from "../pages/TOTPSetupPage";
+import SigningSetupPage from "../pages/SigningSetupPage";
 
 function AppRouter() {
   return (
@@ -64,6 +66,24 @@ function AppRouter() {
             <LevelRoute maxLevel={1}>
               <TemplatesPage />
             </LevelRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/security/totp"
+        element={
+          <ProtectedRoute>
+            <TOTPSetupPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/security/signing"
+        element={
+          <ProtectedRoute>
+            <SigningSetupPage />
           </ProtectedRoute>
         }
       />

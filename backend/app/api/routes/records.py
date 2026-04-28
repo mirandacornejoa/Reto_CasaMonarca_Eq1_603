@@ -1,7 +1,10 @@
 """Rutas de registros de migrantes — CRUD con RBAC por nivel.
 
-Nivel 4 (externo) NO tiene acceso a registros internos sensibles.
-Niveles 1-3 pueden crear y editar; niveles 1-2 pueden leer todos.
+Permisos por nivel:
+  - Nivel 1 (admin):       CRUD completo (crear, leer, editar, eliminar)
+  - Nivel 2 (coordinador): CRU (crear, leer, editar — NO eliminar)
+  - Nivel 3 (operativo):   CR (crear, leer — NO editar ni eliminar)
+  - Nivel 4 (externo):     C (crear — NO leer registros internos ni editar/eliminar)
 """
 
 from typing import List, Optional
@@ -11,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.mappers import to_record_read
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_operator_or_above
+from app.core.deps import require_active_user, require_admin
 from app.schemas.records import RecordCreate, RecordRead, RecordUpdate
 from app.services.audit_service import AuditService
 from app.services.record_service import RecordService
@@ -30,14 +33,25 @@ def _require_internal_user(current_user=Depends(require_active_user)):
     return current_user
 
 
+def _require_coordinator_or_above(current_user=Depends(require_active_user)):
+    """Solo niveles 1 y 2 pueden editar registros (CRU para coordinador, CRUD para admin)."""
+    level_code = current_user.access_level.code if current_user.access_level else 99
+    if level_code > 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Se requiere nivel coordinador o superior para editar registros",
+        )
+    return current_user
+
+
 @router.post("/", response_model=RecordRead, status_code=201)
 def create_record(
     payload: RecordCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user=Depends(require_operator_or_above),
+    current_user=Depends(require_active_user),
 ):
-    """Crear registro de migrante. Niveles 1-3 pueden crear."""
+    """Crear registro de migrante. Todos los niveles (1-4) pueden crear."""
     record = RecordService.create_record(
         db=db,
         name_or_alias=payload.name_or_alias,
@@ -105,9 +119,9 @@ def update_record(
     payload: RecordUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user=Depends(require_operator_or_above),
+    current_user=Depends(_require_coordinator_or_above),
 ):
-    """Editar registro. Niveles 1-3 pueden editar."""
+    """Editar registro. Solo niveles 1-2 (admin y coordinador) pueden editar."""
     record = RecordService.get_by_id(db, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
@@ -143,6 +157,39 @@ def update_record(
     )
 
     return to_record_read(record, db)
+
+
+@router.delete("/{record_id}", status_code=200)
+def delete_record(
+    record_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    """Eliminar registro. Solo nivel 1 (admin) puede eliminar."""
+    record = RecordService.get_by_id(db, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    folio = record.folio
+    name = record.name_or_alias
+    record_hash = record.sha256_hash
+
+    RecordService.delete_record(db, record)
+
+    AuditService.log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="records.delete",
+        resource="migrant_record",
+        resource_id=str(record_id),
+        result="SUCCESS",
+        hash_related=record_hash,
+        detail=f"Registro eliminado: {folio} - {name}",
+        request=request,
+    )
+
+    return {"message": f"Registro {folio} eliminado correctamente"}
 
 
 @router.get("/{record_id}/hash")

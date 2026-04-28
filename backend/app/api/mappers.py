@@ -1,6 +1,7 @@
 """Mappers compartidos — elimina acoplamiento entre módulos de rutas."""
 
 import json
+import os
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,17 @@ from app.models.area import Area
 from app.models.user import User
 from app.schemas.records import RecordRead
 from app.schemas.users import UserRead
+from app.services.field_encryption_service import FieldEncryptionService
+
+
+def _safe_decrypt(enc_value: Optional[str], plain_value: Optional[str]) -> Optional[str]:
+    """Devuelve la versión descifrada si existe, si no cae al valor en claro heredado."""
+    if enc_value and os.getenv("FIELD_ENCRYPTION_KEY", ""):
+        try:
+            return FieldEncryptionService.decrypt(enc_value)
+        except Exception:
+            pass
+    return plain_value
 
 
 def to_user_read(user: User) -> UserRead:
@@ -59,12 +71,12 @@ def to_record_read(record, db: Session) -> RecordRead:
     return RecordRead(
         id=record.id,
         folio=record.folio,
-        name_or_alias=record.name_or_alias,
+        name_or_alias=_safe_decrypt(record.name_or_alias_enc, record.name_or_alias),
         nationality=record.nationality,
         language=record.language,
         age_range=record.age_range,
         gender=record.gender,
-        contact_info=record.contact_info,
+        contact_info=_safe_decrypt(record.contact_info_enc, record.contact_info),
         needs=needs,
         registration_date=record.registration_date,
         observations=record.observations,

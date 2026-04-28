@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(pip install *)",
+      "Bash(python -c \"from app.services.totp_service import TOTPService; from app.services.signing_service import SigningService; from app.services.field_encryption_service import FieldEncryptionService; print\\('OK'\\)\")",
+      "Bash(python -c \"from app.api.routes.auth import router; print\\('auth routes OK'\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('app startup OK'\\)\")",
+      "Bash(alembic stamp *)",
+      "Bash(.venv/Scripts/alembic stamp *)",
+      "Bash(.venv/Scripts/alembic upgrade *)",
+      "Bash(.venv/Scripts/alembic current *)"
+    ]
+  }
+}

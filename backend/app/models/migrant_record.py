@@ -8,12 +8,16 @@ class MigrantRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     folio = Column(String(30), unique=True, nullable=True, index=True)
+    # name_or_alias: campo en claro para compatibilidad; _enc para versión cifrada
     name_or_alias = Column(String(200), nullable=False)
+    name_or_alias_enc = Column(Text, nullable=True)
     nationality = Column(String(100), nullable=True)
     language = Column(String(80), nullable=True)
     age_range = Column(String(30), nullable=True)
     gender = Column(String(50), nullable=True)
+    # contact_info: campo en claro (heredado); _enc para versión cifrada
     contact_info = Column(String(255), nullable=True)
+    contact_info_enc = Column(Text, nullable=True)
     needs = Column(Text, nullable=True)  # JSON array of needs
     registration_date = Column(DateTime, nullable=False, server_default=func.now())
     observations = Column(Text, nullable=True)

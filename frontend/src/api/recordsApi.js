@@ -29,3 +29,13 @@ export async function getRecordHash(id) {
   const { data } = await apiClient.get(`/records/${id}/hash`);
   return data;
 }
+
+export async function deleteRecord(id) {
+  const { data } = await apiClient.delete(`/records/${id}`);
+  return data;
+}
+
+export async function getResourceSignatures(resourceType, resourceId) {
+  const { data } = await apiClient.get(`/auth/signing/signatures/${resourceType}/${resourceId}`);
+  return data;
+}
