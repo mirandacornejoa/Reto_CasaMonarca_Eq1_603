@@ -95,7 +95,7 @@ Frontend disponible en: `http://localhost:5173`
 
 | Rol | Email | Contraseña | Nivel |
 |-----|-------|------------|-------|
-| Administrador | `admin@demo.org` | `Admin123!` | 1 |
+| Administrador | `admin@demo.org` | `Admin2026Seguro!` | 1 |
 | Coordinador | `coordinador@demo.org` | `CoordHuman2026!` | 2 |
 | Operativo | `operador@demo.org` | `Oper2026Seguro!` | 3 |
 | Voluntario (externo) | `voluntario@demo.org` | `Voluntario2026!` | 4 |
