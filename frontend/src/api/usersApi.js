@@ -59,3 +59,21 @@ export async function listRoles() {
   const { data } = await apiClient.get("/roles/");
   return data;
 }
+
+export async function listOperators() {
+  const { data } = await apiClient.get("/identity/operators");
+  return data;
+}
+
+export async function listCoordinators() {
+  const { data } = await apiClient.get("/identity/coordinators");
+  return data;
+}
+
+export async function updateUserAssignment(userId, assignedToId) {
+  const { data } = await apiClient.patch(`/identity/users/${userId}/assignment`, {
+    assigned_to_id: assignedToId || null,
+  });
+  return data;
+}
+

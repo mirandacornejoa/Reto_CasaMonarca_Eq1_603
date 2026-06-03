@@ -9,12 +9,14 @@ from app.api.mappers import to_user_read
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_admin
+from app.models.user import User
 from app.repositories.area_repository import AreaRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import ActivateAccountRequest
 from app.schemas.certificates import CertificateRead
 from app.schemas.users import (
     AreaRead,
+    UserAssignmentUpdateRequest,
     UserCreateByAdminRequest,
     UserCreateByAdminResponse,
     UserExpiryUpdateRequest,
@@ -47,6 +49,9 @@ def create_collaborator(
         role_id=payload.role_id,
         starts_at=payload.starts_at,
         expires_at=payload.expires_at,
+        user_subtype=payload.user_subtype,
+        coordinator_area=payload.coordinator_area,
+        assigned_to_id=payload.assigned_to_id,
     )
 
     cert = user.active_certificate
@@ -364,6 +369,41 @@ def reissue_certificate(
 
 
 # ------------------------------------------------------------------ #
+#  Actualizar asignación jerárquica                                    #
+# ------------------------------------------------------------------ #
+@router.patch("/users/{user_id}/assignment", response_model=UserRead)
+def update_user_assignment(
+    user_id: int,
+    payload: UserAssignmentUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Admin actualiza el supervisor asignado a un usuario (voluntario → operativo, operativo → coordinador)."""
+    user = UserRepository.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    old_assigned = user.assigned_to_id
+    user.assigned_to_id = payload.assigned_to_id
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    AuditService.log(
+        db=db,
+        actor_user_id=admin.id,
+        action="identity.update_assignment",
+        resource="user",
+        resource_id=str(user.id),
+        result="SUCCESS",
+        detail=f"Asignación: {old_assigned} → {payload.assigned_to_id}",
+        request=request,
+    )
+    return to_user_read(user)
+
+
+# ------------------------------------------------------------------ #
 #  Áreas                                                               #
 # ------------------------------------------------------------------ #
 @router.get("/areas", response_model=List[AreaRead])
@@ -372,3 +412,39 @@ def list_areas(
     _: object = Depends(require_admin),
 ):
     return AreaRepository.list_active(db)
+
+
+# ------------------------------------------------------------------ #
+#  Listas jerárquicas (operadores, coordinadores)                      #
+# ------------------------------------------------------------------ #
+@router.get("/operators", response_model=List[UserRead])
+def list_operators(
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
+):
+    """Lista usuarios con nivel 3 (operativo) activos."""
+    from app.models.access_level import AccessLevel
+    users = (
+        db.query(User)
+        .join(AccessLevel)
+        .filter(AccessLevel.code == 3, User.is_active.is_(True))
+        .all()
+    )
+    return [to_user_read(u) for u in users]
+
+
+@router.get("/coordinators", response_model=List[UserRead])
+def list_coordinators(
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
+):
+    """Lista usuarios con nivel 2 (coordinador) activos."""
+    from app.models.access_level import AccessLevel
+    users = (
+        db.query(User)
+        .join(AccessLevel)
+        .filter(AccessLevel.code == 2, User.is_active.is_(True))
+        .all()
+    )
+    return [to_user_read(u) for u in users]
+

@@ -6,8 +6,11 @@ import ActivateAccountPage from "../pages/ActivateAccountPage";
 import DashboardPage from "../pages/DashboardPage";
 import UsersAdminPage from "../pages/UsersAdminPage";
 import RecordsPage from "../pages/RecordsPage";
+import RecordDetailPage from "../pages/RecordDetailPage";
+import IntakeFormPage from "../pages/IntakeFormPage";
+import DeletionRequestsPage from "../pages/DeletionRequestsPage";
+import ArcoPage from "../pages/ArcoPage";
 import AuditPage from "../pages/AuditPage";
-import TemplatesPage from "../pages/TemplatesPage";
 import TOTPSetupPage from "../pages/TOTPSetupPage";
 import SigningSetupPage from "../pages/SigningSetupPage";
 
@@ -27,12 +30,28 @@ function AppRouter() {
       />
 
       <Route
+        path="/records/new"
+        element={
+          <ProtectedRoute>
+            <IntakeFormPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/records"
         element={
           <ProtectedRoute>
-            <LevelRoute maxLevel={3}>
-              <RecordsPage />
-            </LevelRoute>
+            <RecordsPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/records/:id"
+        element={
+          <ProtectedRoute>
+            <RecordDetailPage />
           </ProtectedRoute>
         }
       />
@@ -49,22 +68,33 @@ function AppRouter() {
       />
 
       <Route
-        path="/audit"
+        path="/deletion-requests"
         element={
           <ProtectedRoute>
-            <LevelRoute maxLevel={1}>
-              <AuditPage />
+            <LevelRoute maxLevel={2}>
+              <DeletionRequestsPage />
             </LevelRoute>
           </ProtectedRoute>
         }
       />
 
       <Route
-        path="/templates"
+        path="/arco"
+        element={
+          <ProtectedRoute>
+            <LevelRoute maxLevel={3}>
+              <ArcoPage />
+            </LevelRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/audit"
         element={
           <ProtectedRoute>
             <LevelRoute maxLevel={1}>
-              <TemplatesPage />
+              <AuditPage />
             </LevelRoute>
           </ProtectedRoute>
         }
@@ -83,7 +113,9 @@ function AppRouter() {
         path="/security/signing"
         element={
           <ProtectedRoute>
-            <SigningSetupPage />
+            <LevelRoute maxLevel={2}>
+              <SigningSetupPage />
+            </LevelRoute>
           </ProtectedRoute>
         }
       />

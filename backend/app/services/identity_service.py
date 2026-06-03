@@ -28,6 +28,24 @@ from app.utils.token_utils import hash_token
 DEFAULT_EXPIRY_DAYS = 365
 
 
+def _generate_matricula(db: Session) -> str:
+    """Genera matrícula única formato CM-USR-NNNN."""
+    last = (
+        db.query(User)
+        .filter(User.matricula.like("CM-USR-%"))
+        .order_by(User.id.desc())
+        .first()
+    )
+    if last and last.matricula:
+        try:
+            seq = int(last.matricula.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            seq = 1
+    else:
+        seq = 1
+    return f"CM-USR-{seq:04d}"
+
+
 class IdentityService:
     # ------------------------------------------------------------------ #
     #  Alta de colaborador                                                 #
@@ -38,19 +56,24 @@ class IdentityService:
         actor_user_id: int,
         full_name: str,
         email: str,
-        area_id: int,
+        area_id: Optional[int],
         access_level_code: int,
         role_id: Optional[int],
         starts_at: Optional[datetime] = None,
         expires_at: Optional[datetime] = None,
+        user_subtype: Optional[str] = None,
+        coordinator_area: Optional[str] = None,
+        assigned_to_id: Optional[int] = None,
     ) -> Tuple[User, Optional[str]]:
         existing = UserRepository.get_by_email(db, email)
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El correo ya existe")
 
-        area = AreaRepository.get_by_id(db, area_id)
-        if not area:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Área no encontrada")
+        area = None
+        if area_id:
+            area = AreaRepository.get_by_id(db, area_id)
+            if not area:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Área no encontrada")
 
         if role_id:
             role = RoleRepository.get_by_id(db, role_id)
@@ -87,8 +110,16 @@ class IdentityService:
             created_by_id=actor_user_id,
             starts_at=starts_at,
             expires_at=expires_at,
+            user_subtype=user_subtype,
+            coordinator_area=coordinator_area,
+            assigned_to_id=assigned_to_id,
         )
         user = UserRepository.create(db, user)
+
+        # Generar matrícula única
+        user.matricula = _generate_matricula(db)
+        db.add(user)
+        db.flush()
 
         # Emitir certificado interno automáticamente
         CryptoService.issue_certificate(db, user, expires_at, issued_by=actor_user_id)

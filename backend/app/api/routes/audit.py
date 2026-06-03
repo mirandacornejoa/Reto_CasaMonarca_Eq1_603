@@ -16,14 +16,12 @@ router = APIRouter()
 @router.get("/", response_model=List[AuditLogRead])
 def list_audit_logs(
     limit: int = 200,
+    matricula: str = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_active_user),
 ):
-    """Bitácora de auditoría.
-    - Nivel 1 (Admin): bitácora completa
-    - Nivel 2 (Coordinador): NO tiene acceso por defecto
-    - Nivel 3 (Operador): NO tiene acceso
-    - Nivel 4 (Externo): NO tiene acceso
+    """Bitácora de auditoría — solo administrador.
+    Acepta filtro opcional ?matricula=CM-USR-2026-0001 para rastrear a un usuario.
     """
     level_code = current_user.access_level.code if current_user.access_level else 99
 
@@ -33,4 +31,4 @@ def list_audit_logs(
             detail="Acceso a bitácora restringido al administrador del sistema",
         )
 
-    return AuditRepository.list_latest(db, limit=min(limit, 500))
+    return AuditRepository.list_latest(db, limit=min(limit, 500), matricula=matricula or None)

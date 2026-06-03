@@ -135,7 +135,8 @@ function LoginPage() {
       <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
         <div className="card" style={{ maxWidth: 480, width: "100%" }}>
           <div style={{ textAlign: "center", marginBottom: 20 }}>
-            <h1 className="page-title" style={{ background: "linear-gradient(135deg, var(--accent), var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontSize: "1.4em" }}>
+            <img src="/casa_monarca.png" alt="Casa Monarca" style={{ height: 60, marginBottom: 8 }} />
+            <h1 className="page-title" style={{ color: "var(--accent)", fontSize: "1.4em" }}>
               Configurar autenticación TOTP
             </h1>
             <p className="page-subtitle" style={{ marginBottom: 0, fontSize: "0.9em" }}>
@@ -235,10 +236,7 @@ function LoginPage() {
     <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
       <div className="card" style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <h1 className="page-title" style={{ background: "linear-gradient(135deg, var(--accent), var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            Casa Monarca
-          </h1>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>Gestor de Identidades y Control de Acceso</p>
+          <img src="/casa_monarca.png" alt="Casa Monarca" style={{ height: 80, marginBottom: 12 }} />
         </div>
 
         {!needs2fa ? (

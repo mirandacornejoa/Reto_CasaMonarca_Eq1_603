@@ -7,15 +7,20 @@ from pydantic import BaseModel, EmailStr, Field
 class UserCreateByAdminRequest(BaseModel):
     full_name: str = Field(min_length=3, max_length=150)
     email: EmailStr
-    area_id: int
+    area_id: Optional[int] = None
     access_level_code: int = Field(ge=1, le=4)
     role_id: Optional[int] = None
     starts_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
+    # Campos jerárquicos
+    user_subtype: Optional[str] = None  # becario, voluntario, servicio_social, recepcion
+    coordinator_area: Optional[str] = None  # administracion, legal, psicosocial, humanitario, comunicacion
+    assigned_to_id: Optional[int] = None
 
 
 class UserRead(BaseModel):
     id: int
+    matricula: Optional[str] = None
     full_name: str
     email: EmailStr
     status: str
@@ -28,6 +33,12 @@ class UserRead(BaseModel):
     role_name: str
     starts_at: Optional[datetime]
     expires_at: Optional[datetime]
+    # Campos jerárquicos
+    user_subtype: Optional[str] = None
+    coordinator_area: Optional[str] = None
+    assigned_to_id: Optional[int] = None
+    assigned_to_name: Optional[str] = None
+    # Certificados
     certificate_id: Optional[int] = None
     certificate_status: Optional[str] = None
     certificate_serial: Optional[str] = None
@@ -57,6 +68,10 @@ class UserStatusUpdateRequest(BaseModel):
 class UserExpiryUpdateRequest(BaseModel):
     starts_at: Optional[datetime] = None
     expires_at: datetime
+
+
+class UserAssignmentUpdateRequest(BaseModel):
+    assigned_to_id: Optional[int] = None
 
 
 class AreaRead(BaseModel):

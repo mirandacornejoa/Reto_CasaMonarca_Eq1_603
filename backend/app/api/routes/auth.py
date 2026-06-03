@@ -316,12 +316,17 @@ def signing_enroll(
     """
     Genera certificado de firma tipo SAT.
 
+    Solo disponible para administradores y coordinadores (niveles 1-2).
     El backend genera el par de claves ECDSA P-256, emite un certificado
     X.509 autofirmado (.cer), y cifra la clave privada con la contraseña
     del usuario (.key). La clave privada NO se guarda en el backend.
-
-    Los archivos se devuelven UNA SOLA VEZ para descarga inmediata.
     """
+    level = current_user.access_level.code if current_user.access_level else 99
+    if level > 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo administradores y coordinadores pueden generar certificados de firma",
+        )
     cert, cer_pem, key_pem = SigningService.generate_signing_certificate(
         db=db,
         user=current_user,
