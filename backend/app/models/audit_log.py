@@ -7,6 +7,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(20), unique=True, nullable=True, index=True)
     actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     action = Column(String(120), nullable=False)
     resource = Column(String(120), nullable=False)

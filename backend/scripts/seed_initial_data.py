@@ -42,6 +42,9 @@ BASE_PERMISSIONS = [
     {"code": "records.read", "name": "Leer registros", "description": "Permite consultar registros de migrantes"},
     {"code": "records.edit", "name": "Editar registros", "description": "Permite editar registros de migrantes"},
     {"code": "records.delete", "name": "Eliminar registros", "description": "Permite eliminar registros de migrantes"},
+    {"code": "records.channel", "name": "Canalizar registros", "description": "Permite canalizar registros al coordinador"},
+    {"code": "records.request_delete", "name": "Solicitar eliminación", "description": "Permite solicitar eliminación de registros"},
+    {"code": "records.approve_delete", "name": "Aprobar eliminación", "description": "Permite aprobar/rechazar solicitudes de eliminación"},
     {"code": "identity.manage_users", "name": "Gestionar usuarios", "description": "Alta, cambio de niveles y activación/desactivación"},
     {"code": "certificates.read", "name": "Consultar certificados", "description": "Permite consultar certificados emitidos"},
     {"code": "audit.read", "name": "Consultar bitácora", "description": "Permite consultar la bitácora de auditoría"},
@@ -71,6 +74,7 @@ ROLE_DEFINITIONS = {
         "area_scoped": False,
         "permissions": [
             "records.create", "records.read", "records.edit", "records.delete",
+            "records.channel", "records.request_delete", "records.approve_delete",
             "identity.manage_users", "certificates.read", "audit.read", "templates.manage",
         ],
     },
@@ -80,6 +84,7 @@ ROLE_DEFINITIONS = {
         "area_scoped": True,
         "permissions": [
             "records.create", "records.read", "records.edit",
+            "records.channel", "records.request_delete",
         ],
     },
     "AREA_OPERATOR": {
@@ -87,7 +92,7 @@ ROLE_DEFINITIONS = {
         "level_code": 3,
         "area_scoped": True,
         "permissions": [
-            "records.create", "records.read",
+            "records.create", "records.read", "records.channel",
         ],
     },
     "EXTERNAL_STAFF": {
@@ -100,9 +105,10 @@ ROLE_DEFINITIONS = {
     },
 }
 
-# Usuarios base realistas
+# Usuarios base — 1 por nivel con jerarquía real
+# Cadena: Externo(4) → Operativo(3) → Coordinador(2) ← Admin(1)
 BASE_USERS = [
-    # ── Administradores (2) ──
+    # ── Admin (1) ──
     {
         "full_name": settings.ADMIN_FULL_NAME,
         "email": settings.ADMIN_EMAIL.lower(),
@@ -111,56 +117,17 @@ BASE_USERS = [
         "role_name": "SYSTEM_ADMIN",
         "area_name": "Administración",
     },
-    {
-        "full_name": "Admin Contingencia",
-        "email": "contingencia@demo.org",
-        "password": "Contingencia2026!",
-        "level_code": 1,
-        "role_name": "SYSTEM_ADMIN",
-        "area_name": "Administración",
-    },
-    # ── Coordinadores por área (5) ──
-    {
-        "full_name": "Laura Rodríguez Mora",
-        "email": "coord.admin@demo.org",
-        "password": "CoordAdmin2026!",
-        "level_code": 2,
-        "role_name": "AREA_COORDINATOR",
-        "area_name": "Administración",
-    },
-    {
-        "full_name": "Roberto Sánchez Vega",
-        "email": "coord.legal@demo.org",
-        "password": "CoordLegal2026!",
-        "level_code": 2,
-        "role_name": "AREA_COORDINATOR",
-        "area_name": "Legal",
-    },
-    {
-        "full_name": "Patricia Flores Torres",
-        "email": "coord.psicosocial@demo.org",
-        "password": "CoordPsico2026!",
-        "level_code": 2,
-        "role_name": "AREA_COORDINATOR",
-        "area_name": "Psicosocial",
-    },
+    # ── Coordinador (2) ──
     {
         "full_name": "Miguel Ángel Díaz Ortiz",
-        "email": "coord.humanitario@demo.org",
+        "email": "coordinador@demo.org",
         "password": "CoordHuman2026!",
         "level_code": 2,
         "role_name": "AREA_COORDINATOR",
         "area_name": "Humanitario",
+        "coordinator_area": "humanitario",
     },
-    {
-        "full_name": "Carmen Gutiérrez Luna",
-        "email": "coord.comunicacion@demo.org",
-        "password": "CoordComun2026!",
-        "level_code": 2,
-        "role_name": "AREA_COORDINATOR",
-        "area_name": "Comunicación",
-    },
-    # ── Operativo base (1) ──
+    # ── Operativo (3) — asignado al coordinador ──
     {
         "full_name": "Carlos Hernández Ruiz",
         "email": "operador@demo.org",
@@ -168,15 +135,18 @@ BASE_USERS = [
         "level_code": 3,
         "role_name": "AREA_OPERATOR",
         "area_name": "Humanitario",
+        "assigned_to_email": "coordinador@demo.org",
     },
-    # ── Externo base (1) ──
+    # ── Externo (4) — asignado al operativo ──
     {
         "full_name": "Ana Martínez Soto",
         "email": "voluntario@demo.org",
         "password": "Voluntario2026!",
         "level_code": 4,
         "role_name": "EXTERNAL_STAFF",
-        "area_name": None,  # Sin área asignada
+        "area_name": "Humanitario",
+        "user_subtype": "voluntario",
+        "assigned_to_email": "operador@demo.org",
     },
 ]
 
@@ -364,6 +334,8 @@ def create_base_user(
         created_by_id=None,
         starts_at=now,
         expires_at=expires_at,
+        user_subtype=user_data.get("user_subtype"),
+        coordinator_area=user_data.get("coordinator_area"),
     )
     db.add(user)
     db.flush()
@@ -555,6 +527,18 @@ def seed() -> None:
         for user_data in BASE_USERS:
             u = create_base_user(db, user_data, roles_by_name, areas_by_name, levels_by_code)
             users.append(u)
+
+        # Asignar jerarquías (assigned_to_id)
+        users_by_email = {u.email: u for u in users}
+        for user_data in BASE_USERS:
+            assigned_to_email = user_data.get("assigned_to_email")
+            if assigned_to_email and assigned_to_email in users_by_email:
+                target_user = users_by_email[user_data["email"]]
+                assigned_to = users_by_email[assigned_to_email]
+                target_user.assigned_to_id = assigned_to.id
+                db.add(target_user)
+                print(f"  [JERARQUIA] {target_user.email} -> {assigned_to.email}")
+        db.flush()
 
         admin_user = users[0]
 

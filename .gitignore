@@ -1,4 +1,3 @@
-# ─── Python / Backend ───────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -13,36 +12,30 @@ build/
 venv/
 env/
 ENV/
-
-# Variables de entorno (NUNCA subir al repo)
 .env
 backend/.env
 frontend/.env
-
-# Base de datos SQLite local
 *.db
 *.sqlite3
-
-# Alembic generated (solo versiones, no caché)
 backend/alembic/__pycache__/
-
-# ─── Node / Frontend ────────────────────────────────────────
 node_modules/
 frontend/node_modules/
 dist/
 frontend/dist/
 .npm
 *.local
-
-# ─── IDE / Editores ─────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
-
-# ─── Tests / Coverage ───────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
+
+# AI / IDE tools
+.claude/
+.gemini/
+.cursor/
+.aider*

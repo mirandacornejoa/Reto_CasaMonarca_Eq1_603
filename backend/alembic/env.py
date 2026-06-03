@@ -9,6 +9,7 @@ from app.models import (  # noqa: F401 — importados para que Alembic detecte l
     AccessLevel,
     ActivationToken,
     Area,
+    ArcoRequest,
     AuditLog,
     Certificate,
     Credential,

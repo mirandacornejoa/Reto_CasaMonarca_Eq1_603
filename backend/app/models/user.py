@@ -8,6 +8,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    matricula = Column(String(20), unique=True, nullable=True, index=True)
     full_name = Column(String(150), nullable=False)
     email = Column(String(190), unique=True, nullable=False, index=True)
 
@@ -20,6 +21,13 @@ class User(Base):
 
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # Subtipo de usuario (solo nivel 4): becario, voluntario, servicio_social, recepcion
+    user_subtype = Column(String(30), nullable=True)
+    # Área del coordinador (solo nivel 2): administracion, legal, psicosocial, humanitario, comunicacion
+    coordinator_area = Column(String(30), nullable=True)
+    # Asignación jerárquica: usuario→operativo, operativo→coordinador
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     starts_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
 
@@ -29,6 +37,18 @@ class User(Base):
     area = relationship("Area", back_populates="users")
     access_level = relationship("AccessLevel", back_populates="users")
     role = relationship("Role", back_populates="users")
+
+    # Relación jerárquica (self-referential)
+    assigned_to = relationship(
+        "User",
+        remote_side="User.id",
+        foreign_keys=[assigned_to_id],
+    )
+    subordinates = relationship(
+        "User",
+        foreign_keys=[assigned_to_id],
+        back_populates="assigned_to",
+    )
 
     activation_tokens = relationship("ActivationToken", back_populates="user")
     otp_tokens = relationship("OtpToken", back_populates="user")

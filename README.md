@@ -1,69 +1,93 @@
-# Identity Access Demo — Sprint 2
+# Casa Monarca — Sistema de Gestión de Migrantes
 
-Proyecto full-stack (monolito modular con frontend separado) para gestión de identidades, niveles de acceso, certificados criptográficos internos, registros de migrantes y auditoría completa. Compatible con hosting limitado orientado a Python + MySQL + frontend estático.
+Sistema full-stack para gestión de registros de migrantes con control de acceso por roles (RBAC), firma digital, solicitudes ARCO, bitácora de auditoría y certificados criptográficos. Desarrollado para Casa Monarca A.C.
 
-## Estructura
+## Estructura del proyecto
 
-- `backend/` FastAPI + SQLAlchemy + Alembic + JWT + seed
-- `frontend/` React + Vite (JavaScript)
-- `docs/` notas del sprint
+```
+management_system/
+├── backend/          # FastAPI + SQLAlchemy + Alembic
+├── frontend/         # React + Vite
+└── docs/             # Notas técnicas
+```
 
-## Requisitos
+## Requisitos previos
 
-- Python 3.9+
-- Node.js 18+
-- MySQL 8.0 (opcional para local; fallback SQLite disponible)
+- **Python 3.10+**
+- **Node.js 18+**
+- Git
 
-## Backend — ejecución local
+> La base de datos usa **SQLite** por defecto — no requiere instalar MySQL.
 
-1. Crear entorno virtual e instalar dependencias:
+---
+
+## Instalación y puesta en marcha
+
+### 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/mirandacornejoa/Reto_CasaMonarca_Eq1_603.git
+cd Reto_CasaMonarca_Eq1_603
+```
+
+### 2. Backend
 
 ```bash
 cd backend
+
+# Crear entorno virtual
 python -m venv .venv
+
+# Activar (Windows)
 .venv\Scripts\activate
+# Activar (macOS/Linux)
+source .venv/bin/activate
+
+# Instalar dependencias
 pip install -r requirements.txt
+
+# Configurar variables de entorno
+copy .env.example .env        # Windows
+# cp .env.example .env        # macOS/Linux
 ```
 
-2. Configurar entorno:
+> El archivo `.env` ya viene preconfigurado para SQLite local. No necesitas cambiar nada para desarrollo.
+
+### 3. Inicializar base de datos y cargar datos demo
 
 ```bash
-copy .env.example .env
+# Desde la carpeta backend/ con el entorno virtual activo:
+python scripts/reset_and_seed.py
 ```
 
-3. Eliminar BD anterior y crear esquema nuevo:
+Este script:
+- Borra la BD anterior (si existe)
+- Crea todas las tablas
+- Carga los 4 usuarios demo con certificados criptográficos
+- Carga registros de migrantes de ejemplo
 
-```bash
-del app.db  # si existe
-```
-
-El servidor crea tablas automáticamente con `AUTO_CREATE_TABLES=true`.
-
-4. Ejecutar API:
+### 4. Levantar el backend
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-5. Seed inicial (ejecutar con el servidor detenido o en otra terminal):
-
-```bash
-python -m scripts.seed_initial_data
-```
-
-API base: `http://localhost:8000/api/v1`
+API disponible en: `http://localhost:8000/api/v1`  
 Swagger UI: `http://localhost:8000/docs`
 
-## Frontend — ejecución local
+### 5. Frontend
 
 ```bash
 cd frontend
 npm install
-copy .env.example .env
+
+copy .env.example .env        # Windows
+# cp .env.example .env        # macOS/Linux
+
 npm run dev
 ```
 
-Frontend: `http://localhost:5173`
+Frontend disponible en: `http://localhost:5173`
 
 ---
 
@@ -72,125 +96,107 @@ Frontend: `http://localhost:5173`
 | Rol | Email | Contraseña | Nivel |
 |-----|-------|------------|-------|
 | Administrador | `admin@demo.org` | `Admin123!` | 1 |
-| Coordinador | `coordinador@demo.org` | `Coord123!` | 2 |
-| Operador | `operador@demo.org` | `Oper123!` | 3 |
-| Externo | `externo@demo.org` | `Ext123!` | 4 |
+| Coordinador | `coordinador@demo.org` | `CoordHuman2026!` | 2 |
+| Operativo | `operador@demo.org` | `Oper2026Seguro!` | 3 |
+| Voluntario (externo) | `voluntario@demo.org` | `Voluntario2026!` | 4 |
 
 ---
 
-## Flujo demo cubierto
+## Resetear la base de datos
 
-1. Login con cualquiera de los 4 usuarios demo
-2. Admin: gestión completa de usuarios (crear, cambiar rol, activar/desactivar, definir vigencia)
-3. Al crear usuario se emite **certificado criptográfico interno RSA-2048** con fingerprint SHA-256
-4. Cada rol ve funciones distintas (RBAC por nivel de acceso)
-5. Módulo de registros de migrantes: crear, listar, consultar, editar (niveles 1-3)
-6. Cada registro tiene hash SHA-256 calculado y verificable
-7. Bitácora de auditoría completa (solo admin puede consultar)
-8. Consulta de certificados emitidos (admin: todo; externo: vista pública)
-9. Validación de estado de certificados
-10. Vigencia de usuario: si expira, no puede operar
+Si quieres volver al estado inicial limpio:
+
+```bash
+cd backend
+python scripts/reset_and_seed.py
+```
 
 ---
 
-## Roles y permisos
+## Módulos del sistema
 
-### Nivel 1 — Administrador
-- Gestionar usuarios (crear, roles, vigencia, activar/desactivar)
-- Registros: crear, leer, editar
-- Certificados: ver todos, detalle completo
-- Bitácora: acceso total
-- Hashes: consultar
+### Gestión de registros
+- Crear, editar y consultar registros de migrantes
+- Cada registro tiene hash SHA-256 de integridad
+- Flujo de trabajo: pendiente → canalizado → revisado
 
-### Nivel 2 — Coordinador
-- Registros: crear, leer, editar
-- NO gestiona usuarios
-- NO ve bitácora global
-- NO cambia roles
+### Control de acceso (RBAC)
+- **Nivel 1 (Admin)**: CRUD completo, gestión de usuarios, bitácora, aprobación de cancelaciones ARCO
+- **Nivel 2 (Coordinador)**: Registros CRU, atención de solicitudes ARCO, peticiones de eliminación
+- **Nivel 3 (Operativo)**: Crear y consultar registros, crear solicitudes ARCO
+- **Nivel 4 (Externo/Voluntario)**: Solo crear registros
 
-### Nivel 3 — Operador
-- Registros: crear, leer, editar
-- NO gestiona usuarios
-- NO ve bitácora
-- NO revisa certificados globalmente
+### Módulo ARCO (Acceso, Rectificación, Cancelación, Oposición)
+- Operativo crea solicitud ARCO desde un registro
+- Coordinador atiende (con firma digital) ACCESS, RECTIFICATION, OPPOSITION
+- CANCELLATION se escala al administrador para aprobación/rechazo (con firma)
+- Al aprobar una cancelación: el registro se anonimiza automáticamente
 
-### Nivel 4 — Externo
-- Registros: solo lectura
-- Certificados: consulta pública y validación
-- NO edita nada
-- NO ve bitácora
+### Peticiones de eliminación
+- Coordinador solicita eliminación de un registro al administrador
+- Admin aprueba o rechaza con justificación
 
----
+### Firma digital
+- Coordinadores y admin firman resoluciones con archivo `.key` (clave privada)
+- Las firmas son verificables con el certificado público `.cer`
 
-## Endpoints principales
-
-### Auth
-- `POST /api/v1/auth/login` — login con email y contraseña
-- `GET /api/v1/auth/me` — información del usuario actual
-- `POST /api/v1/auth/activate` — activar cuenta por token
-- `GET /api/v1/auth/demo/activation-links` — links de activación demo (admin)
-
-### Identity (admin)
-- `POST /api/v1/identity/collaborators` — crear usuario con área, nivel y vigencia
-- `GET /api/v1/identity/areas` — listar áreas
-
-### Users (admin)
-- `GET /api/v1/users/` — listar usuarios
-- `PATCH /api/v1/users/{id}/level` — cambiar nivel/rol
-- `PATCH /api/v1/users/{id}/status` — activar/desactivar
-
-### Certificates
-- `GET /api/v1/certificates/` — listar certificados (admin)
-- `GET /api/v1/certificates/public` — vista pública (todos)
-- `GET /api/v1/certificates/{id}` — detalle (admin)
-- `GET /api/v1/certificates/validate/{id}` — validar estado (todos)
-
-### Records
-- `POST /api/v1/records/` — crear registro (niveles 1-3)
-- `GET /api/v1/records/` — listar registros (todos)
-- `GET /api/v1/records/{id}` — detalle con hash (todos)
-- `PUT /api/v1/records/{id}` — editar registro (niveles 1-3)
-- `GET /api/v1/records/{id}/hash` — consultar hash (todos, con audit)
-
-### Audit (admin)
-- `GET /api/v1/audit/` — bitácora completa
-
-### Roles
-- `GET /api/v1/roles/` — listar roles
-- `GET /api/v1/roles/permissions` — listar permisos
-- `GET /api/v1/roles/levels` — listar niveles de acceso
+### Bitácora de auditoría
+- Registro completo de todas las acciones del sistema
+- Acceso exclusivo para administradores
 
 ---
 
 ## Arquitectura de seguridad
 
 - **Contraseñas**: `passlib + bcrypt`
-- **JWT**: tokens de sesión con python-jose
-- **Hashes**: SHA-256 con `hashlib` para tokens, registros, y certificados
-- **Certificados internos**: RSA-2048 generados con `cryptography`, clave pública PEM como cert_data, fingerprint SHA-256
+- **Sesiones**: JWT con `python-jose`
+- **Integridad de registros**: SHA-256 con `hashlib`
+- **Certificados de identidad**: ECDSA (secp256r1) con `cryptography`
+- **Firma de resoluciones**: ECDSA con clave privada cifrada AES-128-CBC
 - **RBAC**: validación por nivel de acceso en cada endpoint
-- **Vigencia**: validación de expiración tanto en login como en cada request autenticado
-- **Auditoría**: registro de login, creación/desactivación de usuarios, emisión de certificados, CRUD de registros, consultas de hash
+- **Vigencia de usuarios**: validación en login y en cada request
 
 ---
 
-## Seed inicial
+## Endpoints principales
 
-El seed crea:
+### Auth
+- `POST /api/v1/auth/login` — Login
+- `GET /api/v1/auth/me` — Usuario actual
 
-- 4 niveles de acceso base
-- 10 permisos funcionales (5 originales + 5 nuevos para records/certificates/audit)
-- 4 roles base mapeados a niveles con permisos diferenciados
-- 3 áreas de ejemplo
-- 4 usuarios demo (uno por nivel), todos activos con certificados emitidos
-- 5 registros de migrantes de ejemplo con hashes SHA-256
-- Entradas de auditoría para todas las operaciones del seed
+### Registros
+- `GET /api/v1/records/` — Listar
+- `POST /api/v1/records/` — Crear
+- `PUT /api/v1/records/{id}` — Editar
+- `GET /api/v1/records/{id}` — Detalle + hash
+
+### ARCO
+- `GET /api/v1/arco/` — Listar (filtrado por rol)
+- `POST /api/v1/arco/` — Crear solicitud
+- `PUT /api/v1/arco/{id}/attend` — Atender (firma requerida)
+- `PUT /api/v1/arco/{id}/escalate` — Escalar al admin
+- `PUT /api/v1/arco/{id}/review` — Aprobar/rechazar (admin, firma requerida)
+
+### Peticiones de eliminación
+- `GET /api/v1/deletion-requests/` — Listar
+- `POST /api/v1/deletion-requests/` — Crear petición
+- `PUT /api/v1/deletion-requests/{id}/review` — Aprobar/rechazar (admin)
+
+### Dashboard
+- `GET /api/v1/dashboard/` — Panel de trabajo por rol
+
+### Usuarios (admin)
+- `GET /api/v1/users/` — Listar usuarios
+- `POST /api/v1/identity/collaborators` — Crear colaborador
+- `PATCH /api/v1/users/{id}/level` — Cambiar nivel
+- `PATCH /api/v1/users/{id}/status` — Activar/desactivar
+
+### Auditoría (admin)
+- `GET /api/v1/audit/` — Bitácora completa
 
 ---
 
-## Sprint 3 (pendiente)
+## Equipo
 
-- Frontend demo completo con vistas por rol
-- Firma digital de documentos
-- Verificación pública de folio/hash
-- Gestión documental completa
+Equipo 1 — Grupo 603 · Tecnológico de Monterrey  
+Reto Casa Monarca A.C.
